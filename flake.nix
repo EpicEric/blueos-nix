@@ -43,9 +43,9 @@
           pkgs = nixpkgs.legacyPackages.${system};
         in
         {
-          ardupilot-tools = pkgs.callPackage ./packages/ardupilot-tools.nix { };
-
           blueos-frontend = pkgs.callPackage ./packages/blueos-frontend { };
+
+          ardupilot-tools = pkgs.callPackage ./packages/ardupilot-tools.nix { };
 
           bridges = pkgs.callPackage ./packages/bridges { };
 
@@ -71,10 +71,16 @@
               ;
 
             inherit (self.packages.${system})
+              ardupilot-tools
               blueos-frontend
+              bridges
               linux2rest
+              machineid-cli
+              mavlink-router
+              mavlink-server
               mavlink2rest
               mavlink-camera-manager
+              mavp2p
               ;
           };
 

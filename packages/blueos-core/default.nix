@@ -1,16 +1,22 @@
 {
   callPackage,
   applyPatches,
+  ardupilot-tools,
   bash,
   blueos-frontend,
+  bridges,
   fetchFromGitHub,
   filebrowser,
   iproute2,
   lib,
   linux2rest,
+  machineid-cli,
   makeWrapper,
+  mavlink-router,
+  mavlink-server,
   mavlink2rest,
   mavlink-camera-manager,
+  mavp2p,
   nginx,
   procps,
   pyproject-build-systems,
@@ -96,15 +102,22 @@ let
     makeWrapper $out/bin/python $out/bin/${name} \
       --add-flags "${src}/core/services/${name}/main.py" \
       --prefix PYTHONPATH : "${src}/core/services/${name}" \
+      --prefix PYTHONPATH : "${ardupilot-tools}/lib/python" \
+      --prefix PATH : "${ardupilot-tools}/bin" \
       --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath [ systemd ]}"
   '') services;
 
   runtimePath = lib.makeBinPath [
+    bridges
     filebrowser
     iproute2
     linux2rest
+    machineid-cli
     mavlink-camera-manager
+    mavlink-router
+    mavlink-server
     mavlink2rest
+    mavp2p
     nginx
     procps
     systemd
