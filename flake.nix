@@ -15,6 +15,10 @@
       ];
     in
     {
-      packages = forAllSystems (system: { });
+      packages = forAllSystems (system: {
+        mavlink-camera-manager =
+          nixpkgs.legacyPackages.${system}.callPackage ./packages/mavlink-camera-manager.nix
+            { };
+      });
     };
 }
