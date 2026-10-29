@@ -51,6 +51,8 @@
         mavlink-camera-manager =
           nixpkgs.legacyPackages.${system}.callPackage ./packages/mavlink-camera-manager.nix
             { };
+
+        linux2rest = nixpkgs.legacyPackages.${system}.callPackage ./packages/linux2rest { };
       });
     };
 }
