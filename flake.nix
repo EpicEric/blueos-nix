@@ -53,6 +53,8 @@
 
           mavlink-camera-manager = pkgs.callPackage ./packages/mavlink-camera-manager.nix { };
 
+          mavp2p = pkgs.callPackage ./packages/mavp2p { };
+
           blueos-core = pkgs.callPackage ./packages/blueos-core {
             inherit
               pyproject-nix
