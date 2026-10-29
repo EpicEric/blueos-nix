@@ -2,6 +2,7 @@
   callPackage,
   applyPatches,
   bash,
+  blueos-frontend,
   fetchFromGitHub,
   filebrowser,
   iproute2,
@@ -124,9 +125,12 @@ env.overrideAttrs (old: {
       --add-flags "${src}/core/start-blueos-core" \
       --prefix PATH : "${src}/core/services:${runtimePath}:$out/bin" \
       --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath [ systemd ]}"
+
+    mkdir -p $out/share
+    ln -s ${blueos-frontend}/share/blueos-frontend $out/share/blueos-frontend
   '';
 
   passthru = (old.passthru or { }) // {
-    inherit env src;
+    inherit env src blueos-frontend;
   };
 })

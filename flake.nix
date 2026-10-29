@@ -37,32 +37,37 @@
       ];
     in
     {
-      packages = forAllSystems (system: {
-        default = self.packages.${system}.blueos-core;
+      packages = forAllSystems (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          blueos-frontend = pkgs.callPackage ./packages/blueos-frontend { };
 
-        blueos-core = nixpkgs.legacyPackages.${system}.callPackage ./packages/blueos-core {
-          inherit
-            pyproject-nix
-            uv2nix
-            pyproject-build-systems
-            ;
+          linux2rest = pkgs.callPackage ./packages/linux2rest { };
 
-          inherit (self.packages.${system})
-            linux2rest
-            mavlink2rest
-            mavlink-camera-manager
-            ;
-        };
+          mavlink2rest = pkgs.callPackage ./packages/mavlink2rest { };
 
-        mavlink-camera-manager =
-          nixpkgs.legacyPackages.${system}.callPackage ./packages/mavlink-camera-manager.nix
-            { };
+          mavlink-camera-manager = pkgs.callPackage ./packages/mavlink-camera-manager.nix { };
 
-        linux2rest = nixpkgs.legacyPackages.${system}.callPackage ./packages/linux2rest { };
+          blueos-core = pkgs.callPackage ./packages/blueos-core {
+            inherit
+              pyproject-nix
+              uv2nix
+              pyproject-build-systems
+              ;
 
-        mavlink2rest = nixpkgs.legacyPackages.${system}.callPackage ./packages/mavlink2rest { };
+            inherit (self.packages.${system})
+              blueos-frontend
+              linux2rest
+              mavlink2rest
+              mavlink-camera-manager
+              ;
+          };
 
-        blueos-frontend = nixpkgs.legacyPackages.${system}.callPackage ./packages/blueos-frontend { };
-      });
+          default = self.packages.${system}.blueos-core;
+        }
+      );
     };
 }
