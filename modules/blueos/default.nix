@@ -310,13 +310,13 @@ in
       "g_ether"
       "slcan"
     ];
-    # The Navigator uses serial0. List options merge, so the console parameter
-    # has to replace rather than append.
-    boot.kernelParams = mkIf cfg.raspberryPi.enable (lib.mkForce [
+    # Appended, never forced: the initrd adds `root=` to this list, and mkForce
+    # would drop it and leave the system unbootable.
+    boot.kernelParams = mkIf cfg.raspberryPi.enable [
       "console=tty1"
       "cgroup_enable=cpuset"
       "cgroup_memory=1"
       "cgroup_enable=memory"
-    ]);
+    ];
   };
 }

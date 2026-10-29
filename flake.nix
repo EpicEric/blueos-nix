@@ -3,6 +3,10 @@
 
   inputs = {
     nixpkgs.url = "https://channels.nixos.org/nixpkgs-unstable/nixexprs.tar.zst";
+    nixos-hardware = {
+      url = "github:NixOS/nixos-hardware";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     pyproject-nix = {
       url = "github:pyproject-nix/pyproject.nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -24,6 +28,7 @@
     {
       self,
       nixpkgs,
+      nixos-hardware,
       pyproject-nix,
       uv2nix,
       pyproject-build-systems,
@@ -35,6 +40,25 @@
         "x86_64-linux"
         "aarch64-linux"
       ];
+
+      # One SD image per supported board. nixos-hardware supplies the kernel and
+      # the firmware partition handling; the board file only adds what the
+      # Navigator needs on top.
+      mkBlueOS =
+        board:
+        lib.nixosSystem {
+          system = "aarch64-linux";
+          specialArgs = {
+            blueos = self.packages.aarch64-linux.blueos-core;
+            sdImageModule =
+              "${nixpkgs}/nixos/modules/installer/sd-card/sd-image.nix";
+          };
+          modules = [
+            ./modules/blueos
+            nixos-hardware.nixosModules."raspberry-pi-${board}"
+            ./nixos/pi${board}
+          ];
+        };
     in
     {
       packages = forAllSystems (
@@ -98,6 +122,11 @@
           };
 
         default = self.nixosModules.blueos;
+      };
+
+      nixosConfigurations = {
+        blueos-pi4 = mkBlueOS "4";
+        blueos-pi5 = mkBlueOS "5";
       };
     };
 }

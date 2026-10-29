@@ -1,0 +1,65 @@
+# Shared base for a BlueOS SD card image on a Raspberry Pi.
+#
+# Boot goes through the vendor firmware into U-Boot, which reads extlinux.conf
+# from the generic-extlinux-compatible loader. That is what gives the image a
+# generation menu; the firmware's own direct-kernel path has none.
+{
+  config,
+  lib,
+  pkgs,
+  blueos,
+  sdImageModule,
+  ...
+}:
+let
+  inherit (lib) mkDefault mkForce;
+
+  install = "${blueos.passthru.src}/install";
+
+  # BlueOS ships this overlay as source and compiles it on the board. The
+  # firmware install script only stages overlays already in the firmware
+  # package, so it has to be built here instead.
+  firmware = pkgs.runCommand "raspberrypifw-navigator" { nativeBuildInputs = [ pkgs.dtc ]; } ''
+    cp -r ${pkgs.raspberrypifw} $out
+    chmod -R u+w $out
+    dtc -@ -Hepapr -I dts -O dtb \
+      -o $out/share/raspberrypi/boot/overlays/spi0-led.dtbo \
+      ${install}/overlays/spi0-led.dts
+  '';
+in
+{
+  imports = [ sdImageModule ];
+
+  hardware.raspberry-pi.firmware = {
+    package = mkDefault firmware;
+    # Loaded by the GPU firmware before U-Boot, which then keeps the device tree
+    # the firmware built from config.txt.
+    uboot.enable = mkDefault true;
+  };
+
+  sdImage = {
+    populateRootCommands = ''
+      mkdir -p ./files/boot
+      ${config.boot.loader.generic-extlinux-compatible.populateCmd} -c ${config.system.build.toplevel} -d ./files/boot
+    '';
+    compressImage = mkDefault true;
+    firmwareSize = mkDefault 512;
+  };
+
+  # The base profile pulls in every filesystem and its repair tools, and zfs
+  # alone drags a Python in. A BlueOS device only needs these two.
+  boot.supportedFilesystems = mkForce [
+    "vfat"
+    "ext4"
+  ];
+  boot.zfs.forceImportRoot = mkDefault false;
+
+  services.blueos = {
+    enable = mkDefault true;
+    package = mkDefault blueos;
+  };
+
+  documentation.enable = mkDefault false;
+
+  system.stateVersion = "25.11";
+}
