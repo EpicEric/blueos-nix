@@ -46,6 +46,12 @@
             uv2nix
             pyproject-build-systems
             ;
+
+          inherit (self.packages.${system})
+            linux2rest
+            mavlink2rest
+            mavlink-camera-manager
+            ;
         };
 
         mavlink-camera-manager =

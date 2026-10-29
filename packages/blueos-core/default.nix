@@ -3,15 +3,22 @@
   applyPatches,
   bash,
   fetchFromGitHub,
+  filebrowser,
   iproute2,
   lib,
+  linux2rest,
   makeWrapper,
+  mavlink2rest,
+  mavlink-camera-manager,
+  nginx,
   procps,
   pyproject-build-systems,
   pyproject-nix,
   python311,
   systemd,
+  ttyd,
   uv2nix,
+  zenoh,
 }:
 let
   version = "1.4.7";
@@ -92,9 +99,16 @@ let
   '') services;
 
   runtimePath = lib.makeBinPath [
+    filebrowser
     iproute2
+    linux2rest
+    mavlink-camera-manager
+    mavlink2rest
+    nginx
     procps
     systemd
+    ttyd
+    zenoh
   ];
 in
 env.overrideAttrs (old: {
