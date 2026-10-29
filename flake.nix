@@ -53,6 +53,8 @@
 
           mavlink-router = pkgs.callPackage ./packages/mavlink-router { };
 
+          mavlink-server = pkgs.callPackage ./packages/mavlink-server { };
+
           mavlink2rest = pkgs.callPackage ./packages/mavlink2rest { };
 
           mavlink-camera-manager = pkgs.callPackage ./packages/mavlink-camera-manager.nix { };
