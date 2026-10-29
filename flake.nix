@@ -45,6 +45,8 @@
         {
           blueos-frontend = pkgs.callPackage ./packages/blueos-frontend { };
 
+          bridges = pkgs.callPackage ./packages/bridges { };
+
           linux2rest = pkgs.callPackage ./packages/linux2rest { };
 
           mavlink-router = pkgs.callPackage ./packages/mavlink-router { };
