@@ -49,6 +49,8 @@
 
           linux2rest = pkgs.callPackage ./packages/linux2rest { };
 
+          machineid-cli = pkgs.callPackage ./packages/machineid-cli { };
+
           mavlink-router = pkgs.callPackage ./packages/mavlink-router { };
 
           mavlink2rest = pkgs.callPackage ./packages/mavlink2rest { };
