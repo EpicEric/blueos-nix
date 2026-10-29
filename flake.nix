@@ -43,6 +43,8 @@
           pkgs = nixpkgs.legacyPackages.${system};
         in
         {
+          ardupilot-tools = pkgs.callPackage ./packages/ardupilot-tools.nix { };
+
           blueos-frontend = pkgs.callPackage ./packages/blueos-frontend { };
 
           bridges = pkgs.callPackage ./packages/bridges { };
