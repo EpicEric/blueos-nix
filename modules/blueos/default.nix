@@ -1,0 +1,322 @@
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+let
+  cfg = config.services.blueos;
+  inherit (lib) mkIf mkOption mkDefault types;
+
+  # blueos-core carries the venv, one wrapper per Python service, and the built
+  # frontend. Its `src` is the patched BlueOS tree, which still owns the nginx,
+  # zenoh and udev inputs that are not Python packages.
+  blueos = cfg.package;
+  src = blueos.passthru.src;
+
+  # nginx runs as an unprivileged user under systemd, so the directives that
+  # only make sense in the container (dropping privileges itself, owning the
+  # pid file) are removed rather than made to match.
+  nginxConf =
+    builtins.replaceStrings
+      [
+        "user www-data;\n"
+        "pid /run/nginx.pid;\n"
+        "/etc/nginx/mime.types"
+        "include cors.conf;"
+        "/home/pi/frontend"
+        "/home/pi/tools/nginx/extensions"
+      ]
+      [
+        ""
+        ""
+        "${pkgs.nginx}/conf/mime.types"
+        "include ${src}/core/tools/nginx/cors.conf;"
+        "${blueos}/share/blueos-frontend"
+        "/var/lib/blueos/nginx-extensions"
+      ]
+      (builtins.readFile "${src}/core/tools/nginx/nginx.conf");
+in
+{
+  imports = [ ./services.nix ];
+
+  options.services.blueos = {
+    enable = mkOption {
+      type = types.bool;
+      default = false;
+      description = "Enable BlueOS core on this host.";
+    };
+
+    package = mkOption {
+      type = types.package;
+      description = ''
+        The `blueos-core` package to run. It has to come from this flake, since
+        the Python environment is built with the flake's uv2nix inputs; the
+        flake's `nixosModules.default` supplies it.
+      '';
+    };
+
+    packages = {
+      ardupilot-tools = mkOption {
+        type = types.package;
+        default = pkgs.callPackage ../../packages/ardupilot-tools.nix { };
+        defaultText = lib.literalMD "this flake's package";
+        description = "ArduPilot firmware uploader, apj_tool and decoder.";
+      };
+
+      bridges = mkOption {
+        type = types.package;
+        default = pkgs.callPackage ../../packages/bridges { };
+        defaultText = lib.literalMD "this flake's package";
+        description = "Serial to UDP bridge, used by bridget and ping.";
+      };
+
+      mavlink-router = mkOption {
+        type = types.package;
+        default = pkgs.callPackage ../../packages/mavlink-router { };
+        defaultText = lib.literalMD "this flake's package";
+        description = "MAVLink router, one of the routers ardupilot_manager can drive.";
+      };
+
+      mavlink-server = mkOption {
+        type = types.package;
+        default = pkgs.callPackage ../../packages/mavlink-server { };
+        defaultText = lib.literalMD "this flake's package";
+        description = "MAVLink server, one of the routers ardupilot_manager can drive.";
+      };
+
+      mavp2p = mkOption {
+        type = types.package;
+        default = pkgs.callPackage ../../packages/mavp2p { };
+        defaultText = lib.literalMD "this flake's package";
+        description = "MAVLink point-to-point router.";
+      };
+
+      mavlink2rest = mkOption {
+        type = types.package;
+        default = pkgs.callPackage ../../packages/mavlink2rest { };
+        defaultText = lib.literalMD "this flake's package";
+        description = "MAVLink over REST and websockets.";
+      };
+
+      linux2rest = mkOption {
+        type = types.package;
+        default = pkgs.callPackage ../../packages/linux2rest { };
+        defaultText = lib.literalMD "this flake's package";
+        description = "Exposes host information as JSON over HTTP.";
+      };
+
+      mavlink-camera-manager = mkOption {
+        type = types.package;
+        default = pkgs.callPackage ../../packages/mavlink-camera-manager.nix { };
+        defaultText = lib.literalMD "this flake's package";
+        description = "Camera streaming service.";
+      };
+
+      machineid-cli = mkOption {
+        type = types.package;
+        default = pkgs.callPackage ../../packages/machineid-cli { };
+        defaultText = lib.literalMD "this flake's package";
+        description = "Generates the hardware uuid BlueOS reports.";
+      };
+    };
+
+    mavlink = {
+      systemId = mkOption {
+        type = types.ints.positive;
+        default = 1;
+        description = "MAVLink system id for the onboard computer.";
+      };
+
+      componentId = mkOption {
+        type = types.ints.positive;
+        default = 194;
+        description = "MAVLink component id for the onboard computer.";
+      };
+    };
+
+    hostname = mkOption {
+      type = types.str;
+      default = "blueos";
+      description = "Host name BlueOS advertises over mDNS.";
+    };
+
+    user = {
+      name = mkOption {
+        type = types.str;
+        default = "pi";
+        description = "Unprivileged account used by bridget and ping.";
+      };
+
+      initialPassword = mkOption {
+        type = types.str;
+        default = "raspberry";
+        description = "Password for that account, matching BlueOS's own default.";
+      };
+    };
+
+    raspberryPi = {
+      enable = mkOption {
+        type = types.bool;
+        default = pkgs.stdenv.hostPlatform.isAarch64;
+        defaultText = lib.literalMD "true on aarch64";
+        description = ''
+          Apply the settings BlueOS expects on a Pi: the i2c bus for the
+          Navigator and the UART left free for it.
+        '';
+      };
+    };
+  };
+
+  config = mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = (blueos.passthru or { }) ? src;
+        message = "services.blueos.package must be the blueos-core package from this flake.";
+      }
+    ];
+
+    networking.hostName = mkDefault cfg.hostname;
+
+    # BlueOS extensions listen on ports of their own choosing, so a per-port
+    # allowlist cannot work; the container image behaves the same way.
+    networking.firewall.enable = mkDefault false;
+
+    # cable_guy drives eth0 and usb0 itself over pyroute2, but needs
+    # NetworkManager on D-Bus to pick its handler.
+    networking.networkmanager = {
+      enable = mkDefault true;
+      unmanaged = [
+        "interface:eth0"
+        "interface:usb0"
+      ];
+    };
+    # ModemManager claims the autopilot's serial ports. NetworkManager's module
+    # turns it on without mkDefault, so this has to force it off.
+    networking.modemmanager.enable = lib.mkForce false;
+
+    services.avahi = {
+      enable = mkDefault true;
+      settings.publish = {
+        disable-publishing = false;
+        publish-addresses = true;
+      };
+      extraServiceFiles.blueos = ''
+        <?xml version="1.0" standalone='no'?>
+        <!DOCTYPE service-group SYSTEM "avahi-service.dtd">
+        <service-group>
+          <name replace-wildcards="yes">%h</name>
+          <service><type>_http._tcp</type><port>80</port></service>
+          <service><type>_mavlink._udp</type><port>14550</port></service>
+        </service-group>
+      '';
+    };
+
+    services.openssh.enable = mkDefault true;
+    # commonwealth copies files as root over ssh into the user account, and
+    # falls back to sshpass when the key does not exist yet.
+    security.sudo.wheelNeedsPassword = mkDefault false;
+
+    users.users.${cfg.user.name} = {
+      isNormalUser = true;
+      initialPassword = cfg.user.initialPassword;
+      extraGroups = [
+        "wheel"
+        "dialout"
+        "docker"
+        "video"
+        "i2c"
+      ];
+    };
+
+    # Docker exists on a BlueOS host for extensions only.
+    virtualisation.docker.enable = mkDefault true;
+
+    # ardupilot_manager downloads glibc-dynamic ArduSub binaries at runtime.
+    programs.nix-ld.enable = mkDefault true;
+
+    environment.systemPackages = with pkgs; [
+      sshpass
+      openssh
+      dhcpcd
+      dnsmasq
+      iw
+      ifmetric
+      iproute2
+      util-linux
+      i2c-tools
+      tmux
+    ];
+
+    services.nginx = {
+      enable = mkDefault true;
+      config = nginxConf;
+      # gixy rejects the /cache/ proxy (it cannot tell that the URL is
+      # operator-supplied), so the check cannot pass for this config.
+      validateConfigFile = false;
+    };
+
+    # helper reloads nginx through this pid file and parses the config to map
+    # ports back to service names.
+    environment.etc."blueos/nginx.conf".text = nginxConf;
+
+    systemd.tmpfiles.rules = [
+      "d /var/logs/blueos 0777 root root -"
+      "d /var/logs/blueos/services 0777 root root -"
+      "d /var/lib/blueos/nginx-extensions 0755 root root -"
+      "d /usr/blueos/userdata/settings 0777 root root -"
+      "d /usr/blueos/userdata/firmware 0777 root root -"
+      "d /usr/blueos/extensions 0777 root root -"
+      "d /etc/blueos 0755 root root -"
+      "d /etc/filebrowser 0755 root root -"
+      "d /shortcuts 0755 root root -"
+      "d /root/blueos-files 0755 root root -"
+      "L /shortcuts/userdata - - - - /usr/blueos/userdata"
+      "L /shortcuts/extensions - - - - /usr/blueos/extensions"
+      "L /shortcuts/system_logs - - - - /var/logs/blueos"
+    ];
+
+    # nginx serves uploads and userdata from these two trees, and proxies
+    # /docker/ to the socket.
+    systemd.services.nginx.serviceConfig = {
+      ReadWritePaths = [
+        "/usr/blueos"
+        "/var/lib/blueos"
+      ];
+      SupplementaryGroups = [ "docker" ];
+    };
+
+    boot.kernel.sysctl = {
+      "net.core.wmem_max" = 16777216;
+      "net.core.rmem_max" = 16777216;
+      "net.core.wmem_default" = 1048576;
+      "net.core.rmem_default" = 1048576;
+      "net.core.netdev_max_backlog" = 5000;
+      "vm.swappiness" = 10;
+    };
+
+    services.udev.extraRules = ''
+      ${builtins.readFile "${src}/install/udev/100.autopilot.rules"}
+      ACTION=="add", SUBSYSTEM=="usb", TEST=="power/control", ATTR{power/control}="on"
+      SUBSYSTEM=="vchiq|vcio|vc-mem", GROUP="video", MODE="0660"
+    '';
+
+    hardware.i2c.enable = mkIf cfg.raspberryPi.enable (mkDefault true);
+    boot.kernelModules = mkIf cfg.raspberryPi.enable [
+      "i2c-dev"
+      "i2c-bcm2835"
+      "bcm2835-v4l2"
+      "dwc2"
+      "g_ether"
+      "slcan"
+    ];
+    # The Navigator uses serial0. List options merge, so the console parameter
+    # has to replace rather than append.
+    boot.kernelParams = mkIf cfg.raspberryPi.enable (lib.mkForce [
+      "console=tty1"
+      "cgroup_enable=cpuset"
+      "cgroup_memory=1"
+      "cgroup_enable=memory"
+    ]);
+  };
+}

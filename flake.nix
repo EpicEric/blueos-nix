@@ -87,5 +87,17 @@
           default = self.packages.${system}.blueos-core;
         }
       );
+
+      nixosModules = {
+        blueos =
+          { pkgs, ... }:
+          {
+            imports = [ ./modules/blueos ];
+
+            services.blueos.package = self.packages.${pkgs.stdenv.hostPlatform.system}.blueos-core;
+          };
+
+        default = self.nixosModules.blueos;
+      };
     };
 }
