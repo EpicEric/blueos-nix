@@ -47,6 +47,8 @@
 
           linux2rest = pkgs.callPackage ./packages/linux2rest { };
 
+          mavlink-router = pkgs.callPackage ./packages/mavlink-router { };
+
           mavlink2rest = pkgs.callPackage ./packages/mavlink2rest { };
 
           mavlink-camera-manager = pkgs.callPackage ./packages/mavlink-camera-manager.nix { };
