@@ -53,6 +53,8 @@
             { };
 
         linux2rest = nixpkgs.legacyPackages.${system}.callPackage ./packages/linux2rest { };
+
+        mavlink2rest = nixpkgs.legacyPackages.${system}.callPackage ./packages/mavlink2rest { };
       });
     };
 }
