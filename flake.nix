@@ -61,6 +61,8 @@
         linux2rest = nixpkgs.legacyPackages.${system}.callPackage ./packages/linux2rest { };
 
         mavlink2rest = nixpkgs.legacyPackages.${system}.callPackage ./packages/mavlink2rest { };
+
+        blueos-frontend = nixpkgs.legacyPackages.${system}.callPackage ./packages/blueos-frontend { };
       });
     };
 }
