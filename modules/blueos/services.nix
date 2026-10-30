@@ -341,12 +341,21 @@ in
               --address=0.0.0.0 --port=7777 --auth.method=noauth \
               --log=stdout --root=/shortcuts \
               --database=/etc/filebrowser/filebrowser.db
-            filebrowser users add ${cfg.user.name} ${cfg.user.initialPassword} \
+          fi
+          # Databases created by the old preStart can hold no users, because
+          # filebrowser rejects the default password. Nothing can log in then.
+          if [ "$(filebrowser users ls --database=/etc/filebrowser/filebrowser.db | wc -l)" -lt 2 ]; then
+            # filebrowser rejects passwords that are short or guessable, and
+            # BlueOS's default is both. With auth.method=noauth the password is
+            # never checked, so a random one is used to create the user.
+            filebrowser users add ${cfg.user.name} "$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)" \
               --database=/etc/filebrowser/filebrowser.db
           fi
         '';
-        exec = "${pkgs.filebrowser}/bin/filebrowser \
-          --database /etc/filebrowser/filebrowser.db --baseurl /file-browser";
+        exec = ''
+          ${pkgs.filebrowser}/bin/filebrowser \
+            --database /etc/filebrowser/filebrowser.db --baseurl /file-browser
+        '';
         serviceConfig.ReadWritePaths = [ "/etc/filebrowser" ];
       };
 
