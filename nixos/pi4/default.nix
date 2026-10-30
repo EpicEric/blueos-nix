@@ -52,6 +52,11 @@ in
 
   hardware.i2c.enable = mkDefault true;
 
+  # The vendor kernel builds 8250 with zero runtime UARTs and relies on the
+  # GPU firmware to append this argument, which U-Boot does not forward.
+  # Without it the mini-UART (/dev/ttyS0, Navigator serial port C) never exists.
+  boot.kernelParams = [ "8250.nr_uarts=1" ];
+
   boot.kernelModules = [
     "i2c-dev"
     "i2c-bcm2835"
