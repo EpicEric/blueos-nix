@@ -86,6 +86,20 @@ jobs:
 
           echo "enabled=true" >> "$GITHUB_OUTPUT"
 
+      # The kernel is most of the build time, so it is built and pushed before
+      # the rest of the system: a run that dies later still leaves it cached
+      # for the next one.
+      - name: Build the kernel
+        run: |
+          nix build --no-link --print-out-paths \
+            .#nixosConfigurations.blueos-${{ matrix.board }}.config.boot.kernelPackages.kernel \
+            .#nixosConfigurations.blueos-${{ matrix.board }}.config.boot.kernelPackages.kernel.modules \
+            > "$RUNNER_TEMP/kernel"
+
+      - name: Push the kernel to the cache
+        if: steps.cache.outputs.enabled == 'true' && github.event_name != 'pull_request'
+        run: xargs attic push attic:blueos < "$RUNNER_TEMP/kernel"
+
       - name: Build the system
         run: |
           nix build --no-link --print-out-paths \
