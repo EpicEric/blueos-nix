@@ -41,23 +41,76 @@
         "aarch64-linux"
       ];
 
+      # The packages that compile native code, which is what makes a build slow.
+      compiledPackages = pkgs: {
+        bridges = pkgs.callPackage ./packages/bridges { };
+
+        linux2rest = pkgs.callPackage ./packages/linux2rest { };
+
+        machineid-cli = pkgs.callPackage ./packages/machineid-cli { };
+
+        mavlink-router = pkgs.callPackage ./packages/mavlink-router { };
+
+        mavlink-server = pkgs.callPackage ./packages/mavlink-server { };
+
+        mavlink2rest = pkgs.callPackage ./packages/mavlink2rest { };
+
+        mavlink-camera-manager = pkgs.callPackage ./packages/mavlink-camera-manager { };
+
+        mavp2p = pkgs.callPackage ./packages/mavp2p { };
+      };
+
+      crossPkgs = nixpkgs.legacyPackages.x86_64-linux.pkgsCross.aarch64-multiplatform;
+
+      # mavlink-router only links libsystemd and builds in a minute under QEMU,
+      # while cross-building it compiles systemd from source: cross-built
+      # libraries are not in cache.nixos.org.
+      crossPackages = removeAttrs (compiledPackages crossPkgs) [ "mavlink-router" ] // {
+        mavlink-camera-manager = crossPkgs.callPackage ./packages/mavlink-camera-manager {
+          pkgsNative = nixpkgs.legacyPackages.aarch64-linux;
+        };
+      };
+
       # One SD image per supported board. nixos-hardware supplies the kernel and
       # the firmware partition handling; the board file only adds what the
       # Navigator needs on top.
+      #
+      # With `cross`, the system is still evaluated as native aarch64-linux so
+      # everything else substitutes from cache.nixos.org. Only the kernel and the
+      # compiled BlueOS packages are built on x86_64, which skips the QEMU
+      # emulation that makes them slow.
       mkBlueOS =
-        board:
+        {
+          board,
+          cross ? false,
+        }:
         lib.nixosSystem {
           system = "aarch64-linux";
           specialArgs = {
-            blueos = self.packages.aarch64-linux.blueos-core;
-            sdImageModule =
-              "${nixpkgs}/nixos/modules/installer/sd-card/sd-image.nix";
+            blueos =
+              if cross then
+                self.packages.aarch64-linux.blueos-core.override crossPackages
+              else
+                self.packages.aarch64-linux.blueos-core;
+            sdImageModule = "${nixpkgs}/nixos/modules/installer/sd-card/sd-image.nix";
           };
           modules = [
             ./modules/blueos
             nixos-hardware.nixosModules."raspberry-pi-${board}"
             ./nixos/pi${board}
-          ];
+          ]
+          ++ lib.optional cross (
+            { pkgs, ... }:
+            {
+              services.blueos.packages = crossPackages;
+
+              boot.kernelPackages = pkgs.linuxPackagesFor (
+                crossPkgs.callPackage "${nixos-hardware}/raspberry-pi/common/kernel.nix" {
+                  rpiVersion = lib.toInt board;
+                }
+              );
+            }
+          );
         };
     in
     {
@@ -66,26 +119,11 @@
         let
           pkgs = nixpkgs.legacyPackages.${system};
         in
-        {
+        compiledPackages pkgs
+        // {
           blueos-frontend = pkgs.callPackage ./packages/blueos-frontend { };
 
           ardupilot-tools = pkgs.callPackage ./packages/ardupilot-tools { };
-
-          bridges = pkgs.callPackage ./packages/bridges { };
-
-          linux2rest = pkgs.callPackage ./packages/linux2rest { };
-
-          machineid-cli = pkgs.callPackage ./packages/machineid-cli { };
-
-          mavlink-router = pkgs.callPackage ./packages/mavlink-router { };
-
-          mavlink-server = pkgs.callPackage ./packages/mavlink-server { };
-
-          mavlink2rest = pkgs.callPackage ./packages/mavlink2rest { };
-
-          mavlink-camera-manager = pkgs.callPackage ./packages/mavlink-camera-manager { };
-
-          mavp2p = pkgs.callPackage ./packages/mavp2p { };
 
           blueos-core = pkgs.callPackage ./packages/blueos-core {
             inherit
@@ -125,8 +163,16 @@
       };
 
       nixosConfigurations = {
-        blueos-pi4 = mkBlueOS "4";
-        blueos-pi5 = mkBlueOS "5";
+        blueos-pi4 = mkBlueOS { board = "4"; };
+        blueos-pi5 = mkBlueOS { board = "5"; };
+        blueos-pi4-cross = mkBlueOS {
+          board = "4";
+          cross = true;
+        };
+        blueos-pi5-cross = mkBlueOS {
+          board = "5";
+          cross = true;
+        };
       };
     };
 }
