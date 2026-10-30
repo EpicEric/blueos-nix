@@ -38,6 +38,7 @@ let
       gst-libav
       gst-plugins-rs
       pkgs.libcamera
+      pkgs.libnice
     ]
   );
 
