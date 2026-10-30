@@ -42,6 +42,7 @@ let
       ./cable-guy-dhcpcd.patch
       ./helper-nginx-paths.patch
       ./navigator-arch-detect.patch
+      ./navigator-bmp390.patch
     ];
   };
 

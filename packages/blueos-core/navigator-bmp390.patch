@@ -1,0 +1,55 @@
+--- a/core/services/ardupilot_manager/flight_controller_detector/linux/navigator.py
++++ b/core/services/ardupilot_manager/flight_controller_detector/linux/navigator.py
+@@ -40,10 +40,14 @@
+ class NavigatorPi5(Navigator):
+     required_devices = {
+         "ADS1115": (0x48, 1),
+-        "BME280": (0x76, 1),
+         "PCA9685": (0x40, 3),
+     }
+ 
++    barometer_devices = {
++        "BME280": (0x76, 1),
++        "BMP390_0x77": (0x77, 1),
++    }
++
+     magnetometer_devices = {
+         "AK09915": (0x0C, 1),
+         "IIS2MDC_0x1E": (0x1E, 1),
+@@ -61,19 +65,24 @@
+         if not self.is_pi5():
+             return False
+         required_ok = all(self.check_for_i2c_device(bus, address) for address, bus in self.required_devices.values())
++        barometer_ok = any(self.check_for_i2c_device(bus, address) for address, bus in self.barometer_devices.values())
+         magnetometer_ok = any(
+             self.check_for_i2c_device(bus, address) for address, bus in self.magnetometer_devices.values()
+         )
+-        return required_ok and magnetometer_ok
++        return required_ok and barometer_ok and magnetometer_ok
+ 
+ 
+ class NavigatorPi4(Navigator):
+     required_devices = {
+         "ADS1115": (0x48, 1),
+-        "BME280": (0x76, 1),
+         "PCA9685": (0x40, 4),
+     }
+ 
++    barometer_devices = {
++        "BME280": (0x76, 1),
++        "BMP390_0x77": (0x77, 1),
++    }
++
+     magnetometer_devices = {
+         "AK09915": (0x0C, 1),
+         "IIS2MDC_0x1E": (0x1E, 1),
+@@ -109,7 +118,8 @@
+         if self.is_pi5():
+             return False
+         required_ok = all(self.check_for_i2c_device(bus, address) for address, bus in self.required_devices.values())
++        barometer_ok = any(self.check_for_i2c_device(bus, address) for address, bus in self.barometer_devices.values())
+         magnetometer_ok = any(
+             self.check_for_i2c_device(bus, address) for address, bus in self.magnetometer_devices.values()
+         )
+-        return required_ok and magnetometer_ok
++        return required_ok and barometer_ok and magnetometer_ok
