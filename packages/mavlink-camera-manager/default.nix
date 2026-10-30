@@ -12,9 +12,25 @@
   stdenv,
   stdenvNoCC,
   writableTmpDirAsHomeHook,
+  pkgsNative ? null,
 }:
 let
   version = "3.26.3";
+
+  # When cross-compiling, link against the native aarch64 libraries, which
+  # cache.nixos.org has, instead of cross-built copies, which it does not.
+  target =
+    if pkgsNative == null then
+      {
+        inherit
+          glib
+          gst_all_1
+          libv4l
+          stdenv
+          ;
+      }
+    else
+      pkgsNative;
 
   src = fetchFromGitHub {
     owner = "mavlink";
@@ -106,37 +122,50 @@ let
     '';
   };
 in
-rustPlatform.buildRustPackage {
-  pname = "mavlink-camera-manager";
-  inherit version src;
+rustPlatform.buildRustPackage (
+  {
+    pname = "mavlink-camera-manager";
+    inherit version src;
 
-  __structuredAttrs = true;
+    __structuredAttrs = true;
 
-  cargoHash = "sha256-86+sEaQH8LRRd47+5WSjLhMKDLTKHfst7Me+3cEu0Xs=";
+    cargoHash = "sha256-86+sEaQH8LRRd47+5WSjLhMKDLTKHfst7Me+3cEu0Xs=";
 
-  nativeBuildInputs = [
-    git
-    pkg-config
-    rustPlatform.bindgenHook
-  ];
+    nativeBuildInputs = [
+      git
+      pkg-config
+      rustPlatform.bindgenHook
+    ];
 
-  env.SKIP_WEB = "1";
+    env.SKIP_WEB = "1";
 
-  # Upstream tests need GStreamer runtime plugins (x264enc) and a writable HOME
-  doCheck = false;
+    # Upstream tests need GStreamer runtime plugins (x264enc) and a writable HOME
+    doCheck = false;
 
-  postPatch = ''
-    mkdir -p frontend
-    ln -s ${frontend}/share/mavlink-camera-manager-frontend frontend/dist
-  '';
+    postPatch = ''
+      mkdir -p frontend
+      ln -s ${frontend}/share/mavlink-camera-manager-frontend frontend/dist
+    '';
 
-  buildInputs = [
-    glib
-    gst_all_1.gstreamer
-    gst_all_1.gst-plugins-bad
-    gst_all_1.gst-plugins-base
-    gst_all_1.gst-rtsp-server
-    libv4l
-    stdenv.cc.cc.lib
-  ];
-}
+    buildInputs = [
+      target.glib
+      target.gst_all_1.gstreamer
+      target.gst_all_1.gst-plugins-bad
+      target.gst_all_1.gst-plugins-base
+      target.gst_all_1.gst-rtsp-server
+      target.libv4l
+      target.stdenv.cc.cc.lib
+    ];
+  }
+  // lib.optionalAttrs (pkgsNative != null) {
+    # The cross linker records its own glibc, which would sit next to the
+    # native one the GStreamer libraries use.
+    postFixup = ''
+      exe=$out/bin/mavlink-camera-manager
+      patchelf \
+        --set-interpreter ${target.stdenv.cc.libc}/lib/ld-linux-aarch64.so.1 \
+        --set-rpath "$(patchelf --print-rpath $exe | sed 's|${stdenv.cc.libc}|${target.stdenv.cc.libc}|g')" \
+        $exe
+    '';
+  }
+)
