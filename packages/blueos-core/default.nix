@@ -43,6 +43,7 @@ let
       ./helper-nginx-paths.patch
       ./navigator-arch-detect.patch
       ./navigator-bmp390.patch
+      ./navigator-nixos-serial-map.patch
     ];
   };
 
