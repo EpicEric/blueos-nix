@@ -54,6 +54,10 @@ in
   ];
   boot.zfs.forceImportRoot = mkDefault false;
 
+  # The default initrd module list includes Rockchip drivers that the Raspberry
+  # Pi vendor kernel does not build.
+  boot.initrd.allowMissingModules = mkDefault true;
+
   services.blueos = {
     enable = mkDefault true;
     package = mkDefault blueos;
