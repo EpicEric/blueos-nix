@@ -21,6 +21,7 @@ let
     builtins.replaceStrings
       [
         "user www-data;\n"
+        "worker_processes auto;\n"
         "pid /run/nginx.pid;\n"
         "/etc/nginx/mime.types"
         "include cors.conf;"
@@ -28,6 +29,7 @@ let
         "/home/pi/tools/nginx/extensions"
       ]
       [
+        ""
         ""
         ""
         "${pkgs.nginx}/conf/mime.types"
