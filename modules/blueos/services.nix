@@ -121,6 +121,11 @@ in
           "L /run/blueos/device-tree/soc - - - - soc@107c000000"
         ];
 
+    systemd.targets.blueos = {
+      description = "BlueOS";
+      wantedBy = [ "multi-user.target" ];
+    };
+
     systemd.services = {
       blueos-hardware-uuid = {
         description = "BlueOS hardware uuid";
