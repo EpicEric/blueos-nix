@@ -69,7 +69,7 @@
         {
           blueos-frontend = pkgs.callPackage ./packages/blueos-frontend { };
 
-          ardupilot-tools = pkgs.callPackage ./packages/ardupilot-tools.nix { };
+          ardupilot-tools = pkgs.callPackage ./packages/ardupilot-tools { };
 
           bridges = pkgs.callPackage ./packages/bridges { };
 
@@ -83,7 +83,7 @@
 
           mavlink2rest = pkgs.callPackage ./packages/mavlink2rest { };
 
-          mavlink-camera-manager = pkgs.callPackage ./packages/mavlink-camera-manager.nix { };
+          mavlink-camera-manager = pkgs.callPackage ./packages/mavlink-camera-manager { };
 
           mavp2p = pkgs.callPackage ./packages/mavp2p { };
 

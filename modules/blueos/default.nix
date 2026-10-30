@@ -59,7 +59,7 @@ in
     packages = {
       ardupilot-tools = mkOption {
         type = types.package;
-        default = pkgs.callPackage ../../packages/ardupilot-tools.nix { };
+        default = pkgs.callPackage ../../packages/ardupilot-tools { };
         defaultText = lib.literalMD "this flake's package";
         description = "ArduPilot firmware uploader, apj_tool and decoder.";
       };
@@ -108,7 +108,7 @@ in
 
       mavlink-camera-manager = mkOption {
         type = types.package;
-        default = pkgs.callPackage ../../packages/mavlink-camera-manager.nix { };
+        default = pkgs.callPackage ../../packages/mavlink-camera-manager { };
         defaultText = lib.literalMD "this flake's package";
         description = "Camera streaming service.";
       };
