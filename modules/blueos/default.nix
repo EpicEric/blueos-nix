@@ -6,7 +6,12 @@
 }:
 let
   cfg = config.services.blueos;
-  inherit (lib) mkIf mkOption mkDefault types;
+  inherit (lib)
+    mkIf
+    mkOption
+    mkDefault
+    types
+    ;
 
   # blueos-core carries the venv, one wrapper per Python service, and the built
   # frontend. Its `src` is the patched BlueOS tree, which still owns the nginx,
