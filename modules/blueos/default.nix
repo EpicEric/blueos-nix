@@ -321,6 +321,9 @@ in
       "cgroup_enable=cpuset"
       "cgroup_memory=1"
       "cgroup_enable=memory"
+      # ArduPilot maps the GPIO registers through /dev/mem, which nixpkgs'
+      # strict /dev/mem refuses once a driver has claimed the range.
+      "iomem=relaxed"
     ];
   };
 }
