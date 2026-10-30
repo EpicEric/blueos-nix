@@ -342,6 +342,10 @@ in
               --log=stdout --root=/shortcuts \
               --database=/etc/filebrowser/filebrowser.db
           fi
+          # Every entry under /shortcuts is a symlink out of the scope, which
+          # newer filebrowser refuses to serve unless this is set.
+          filebrowser config set --followExternalSymlinks \
+            --database=/etc/filebrowser/filebrowser.db
           # Databases created by the old preStart can hold no users, because
           # filebrowser rejects the default password. Nothing can log in then.
           if [ "$(filebrowser users ls --database=/etc/filebrowser/filebrowser.db | wc -l)" -lt 2 ]; then
