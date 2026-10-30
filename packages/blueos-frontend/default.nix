@@ -46,12 +46,10 @@ let
   };
 
   submoduleCopy = lib.concatStringsSep "\n" (
-    lib.mapAttrsToList (
-      path: submodule: ''
-        rm -rf ${path}
-        cp -R ${submodule} ${path}
-      ''
-    ) submodules
+    lib.mapAttrsToList (path: submodule: ''
+      rm -rf ${path}
+      cp -R ${submodule} ${path}
+    '') submodules
   );
 
   nodeModules = stdenvNoCC.mkDerivation {
