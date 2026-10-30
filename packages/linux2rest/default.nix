@@ -50,6 +50,9 @@ rustPlatform.buildRustPackage {
     udev
   ];
 
+  # Without this the platform endpoint is compiled out and answers 500.
+  cargoBuildFlags = [ "--features=raspberry" ];
+
   meta = {
     description = "REST API exposing Linux system information";
     homepage = "https://github.com/patrickelectric/linux2rest";
