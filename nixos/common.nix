@@ -58,6 +58,16 @@ in
   # Pi vendor kernel does not build.
   boot.initrd.allowMissingModules = mkDefault true;
 
+  # BlueOS sizes its dphys-swapfile to 1GB when the card has room. Without a
+  # swapfile the image has none, and the services get OOM killed instead.
+  swapDevices = [
+    {
+      device = "/var/swapfile";
+      size = 1024;
+      priority = 10;
+    }
+  ];
+
   services.blueos = {
     enable = mkDefault true;
     package = mkDefault blueos;
