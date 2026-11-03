@@ -33,49 +33,14 @@ jobs:
           add-channel: "true"
           extra-conf: |
             accept-flake-config = true
+            extra-substituters = ${{ vars.NIKS3_SERVER_URL }}
+            extra-trusted-public-keys = ${{ vars.NIKS3_PUBLIC_KEY }}
             # Prevent out-of-memory SIGTERM
             max-jobs = 1
 
-      - name: Install attic
-        run: nix profile install nixpkgs#attic-client
+      - name: Install niks3
+        run: nix profile install nixpkgs#niks3
 
-      - name: Configure the cache
-        id: cache
-        env:
-          ATTIC_TOKEN: ${{ secrets.ATTIC_TOKEN }}
-        run: |
-          if [ -z "$ATTIC_TOKEN" ]; then
-            echo "::notice::ATTIC_TOKEN is not set, building without the binary cache"
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          token_file="$RUNNER_TEMP/attic-token"
-          printf '%s\n' "$ATTIC_TOKEN" > "$token_file"
-          chmod 600 "$token_file"
-
-          mkdir -p ~/.config/attic
-          cat > ~/.config/attic/config.toml <<EOF
-          default-server = "attic"
-
-          [servers.attic]
-          endpoint = "https://attic.eric.dev.br/"
-          token-file = "$token_file"
-          EOF
-          chmod 600 ~/.config/attic/config.toml
-
-          attic use attic:blueos
-
-          if ! nix config show | grep -q 'attic.eric.dev.br'; then
-            echo "the cache was not registered as a substituter" >&2
-            exit 1
-          fi
-
-          echo "enabled=true" >> "$GITHUB_OUTPUT"
-
-      # The kernel is most of the build time, so it is built and pushed before
-      # the rest of the system: a run that dies later still leaves it cached
-      # for the next one.
       - name: Build the kernel
         run: |
           nix build --no-link --print-out-paths \
@@ -84,32 +49,42 @@ jobs:
             > "$RUNNER_TEMP/kernel"
 
       - name: Push the kernel to the cache
-        if: steps.cache.outputs.enabled == 'true' && github.event_name != 'pull_request'
-        run: xargs attic push attic:blueos < "$RUNNER_TEMP/kernel"
+        if: github.event_name != 'pull_request'
+        env:
+          NIKS3_AUTH_TOKEN_FILE: "/tmp/niks3-token"
+          NIKS3_SERVER_URL: ${{ vars.NIKS3_SERVER_URL }}
+        run: |
+          echo ${{ secrets.NIKS3_AUTH_TOKEN }} > $NIKS3_AUTH_TOKEN_FILE
+          xargs niks3 push < "$RUNNER_TEMP/kernel"
 
       - name: Build the system
         run: |
-          nix build --no-link --print-out-paths \
+          nix build --cores 2 --no-link --print-out-paths \
             .#nixosConfigurations.blueos-${{ matrix.board }}.config.system.build.toplevel \
             > "$RUNNER_TEMP/toplevel"
 
       - name: Push the system to the cache
-        if: steps.cache.outputs.enabled == 'true' && github.event_name != 'pull_request'
-        run: attic push attic:blueos "$(cat "$RUNNER_TEMP/toplevel")"
+        if: github.event_name != 'pull_request'
+        env:
+          NIKS3_AUTH_TOKEN_FILE: "/tmp/niks3-token"
+          NIKS3_SERVER_URL: ${{ vars.NIKS3_SERVER_URL }}
+        run: |
+          echo ${{ secrets.NIKS3_AUTH_TOKEN }} > $NIKS3_AUTH_TOKEN_FILE
+          niks3 push "$(cat "$RUNNER_TEMP/toplevel")"
 
       - name: Build the image
         run: |
           nix build .#nixosConfigurations.blueos-${{ matrix.board }}.config.system.build.sdImage \
             --out-link image
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: blueos-${{ matrix.board }}
           path: image/sd-image/*.img.zst
           if-no-files-found: error
           retention-days: 7
 
-      - uses: softprops/action-gh-release@v3
+      - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: image/sd-image/*.img.zst
