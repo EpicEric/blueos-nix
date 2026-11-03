@@ -33,9 +33,8 @@ jobs:
           add-channel: "true"
           extra-conf: |
             accept-flake-config = true
-            # Prevent OoM SIGTERM
+            # Prevent out-of-memory SIGTERM
             max-jobs = 1
-            cores = 2
 
       - name: Install attic
         run: nix profile install nixpkgs#attic-client
