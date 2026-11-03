@@ -18,7 +18,10 @@ let
   # zenoh and udev inputs that are not Python packages.
   blueos = cfg.package;
   src = blueos.passthru.src;
-  version = src.tag;
+
+  # The version lives in version.nix, which derives it from the package rather
+  # than from the source tag: the source is pinned by commit, so it has none.
+  version = cfg.version;
 
   # nginx runs as an unprivileged user under systemd, so the directives that
   # only make sense in the container (dropping privileges itself, owning the
@@ -52,7 +55,7 @@ let
   );
 in
 {
-  imports = [ ./services.nix ];
+  imports = [ ./services.nix ./version.nix ];
 
   options.services.blueos = {
     enable = mkOption {

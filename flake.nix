@@ -93,6 +93,9 @@
               else
                 self.packages.aarch64-linux.blueos-core;
             sdImageModule = "${nixpkgs}/nixos/modules/installer/sd-card/sd-image.nix";
+            # Null for a dirty tree and for a plain path flake; version.nix
+            # reports that as "unknown" rather than failing the build.
+            blueosNixRev = self.rev or self.dirtyRev or null;
           };
           modules = [
             ./modules/blueos
@@ -121,7 +124,11 @@
         in
         compiledPackages pkgs
         // {
-          blueos-frontend = pkgs.callPackage ./packages/blueos-frontend { };
+          blueos-source = pkgs.callPackage ./packages/blueos-source { };
+
+          blueos-frontend = pkgs.callPackage ./packages/blueos-frontend {
+            inherit (self.packages.${system}) blueos-source;
+          };
 
           ardupilot-tools = pkgs.callPackage ./packages/ardupilot-tools { };
 
@@ -134,6 +141,7 @@
 
             inherit (self.packages.${system})
               ardupilot-tools
+              blueos-source
               blueos-frontend
               bridges
               linux2rest

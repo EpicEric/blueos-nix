@@ -78,6 +78,10 @@ let
       environment = {
         MAV_SYSTEM_ID = toString cfg.mavlink.systemId;
         MAV_COMPONENT_ID_ONBOARD_COMPUTER4 = toString cfg.mavlink.componentId;
+        # Reported by commonwealth.utils.general.blueos_version(), which feeds
+        # the helper heartbeat, the host log dumps and Sentry. environment.variables
+        # only reaches PAM sessions, so units need it here.
+        GIT_DESCRIBE_TAGS = cfg.gitDescribe;
         RUST_BACKTRACE = "1";
       }
       // environment;

@@ -4,8 +4,8 @@
   ardupilot-tools,
   bash,
   blueos-frontend,
+  blueos-source,
   bridges,
-  fetchFromGitHub,
   filebrowser,
   iproute2,
   lib,
@@ -28,16 +28,13 @@
   zenoh,
 }:
 let
-  version = "1.4.7";
+  inherit (blueos-source) version rev channel;
 
+  # applyPatches keeps the passthru of the source it wraps, so `tag` would be
+  # null here: the source is pinned by commit, not by tag.
   src = applyPatches {
     name = "BlueOS-${version}-patched";
-    src = fetchFromGitHub {
-      owner = "BlueRobotics";
-      repo = "BlueOS";
-      tag = version;
-      hash = "sha256-gXbPV7CC0yIaR2JaLRy6rDVHzKstZzsjViU2jQ5xly4=";
-    };
+    src = blueos-source.src;
     patches = [
       ./cable-guy-dhcpcd.patch
       ./helper-nginx-paths.patch
@@ -146,6 +143,6 @@ env.overrideAttrs (old: {
   '';
 
   passthru = (old.passthru or { }) // {
-    inherit env src blueos-frontend;
+    inherit env src blueos-frontend version rev channel;
   };
 })

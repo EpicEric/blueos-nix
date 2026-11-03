@@ -1,20 +1,14 @@
 {
   lib,
   bun,
+  blueos-source,
   fetchFromGitHub,
   nodejs,
   stdenvNoCC,
   writableTmpDirAsHomeHook,
 }:
 let
-  version = "1.4.7";
-
-  src = fetchFromGitHub {
-    owner = "BlueRobotics";
-    repo = "BlueOS";
-    tag = version;
-    hash = "sha256-gXbPV7CC0yIaR2JaLRy6rDVHzKstZzsjViU2jQ5xly4=";
-  };
+  inherit (blueos-source) version src rev;
 
   # Submodules are not part of the GitHub archive; the revisions match the ones
   # the tag records in .gitmodules.
@@ -121,6 +115,13 @@ stdenvNoCC.mkDerivation {
 
   buildPhase = ''
     runHook preBuild
+
+    # Vite reads VITE_* from the environment, and App.vue parses this as a git
+    # describe string to build a GitHub link: the `tags/` prefix and the `-g`
+    # hash are both meaningful to convertGitDescribeToUrl, so neither can be
+    # dropped. The frontend is baked at build time, so this cannot be set at
+    # runtime like the backend's GIT_DESCRIBE_TAGS.
+    export VITE_APP_GIT_DESCRIBE="tags/${version}-0-g${builtins.substring 0 7 rev}"
 
     pushd core/frontend
     bun run build
