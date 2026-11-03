@@ -212,7 +212,10 @@ in
         name = "kraken";
         nice = 19;
         exec = python "kraken" [ ];
-        serviceConfig.SupplementaryGroups = [ "docker" ];
+        serviceConfig.SupplementaryGroups = [
+          "docker"
+          "podman"
+        ];
       };
 
       wifi = mkService {
@@ -289,7 +292,10 @@ in
       versionchooser = mkService {
         name = "versionchooser";
         exec = python "versionchooser" [ ];
-        serviceConfig.SupplementaryGroups = [ "docker" ];
+        serviceConfig.SupplementaryGroups = [
+          "docker"
+          "podman"
+        ];
       };
 
       log-zipper = mkService {

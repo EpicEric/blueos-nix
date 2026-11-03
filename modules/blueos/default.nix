@@ -258,13 +258,26 @@ in
         "wheel"
         "dialout"
         "docker"
+        "podman"
         "video"
         "i2c"
       ];
     };
 
     # Docker exists on a BlueOS host for extensions only.
-    virtualisation.docker.enable = mkDefault true;
+    virtualisation = {
+      podman = {
+        enable = mkDefault true;
+        dockerCompat = mkDefault true;
+        dockerSocket.enable = mkDefault true;
+        defaultNetwork.settings.dns_enabled = mkDefault true;
+      };
+      containers = {
+        enable = mkDefault true;
+        containersConf.settings.compose_warning_logs = mkDefault false;
+        registries.settings.unqualified-search-registries = mkDefault [ "docker.io" ];
+      };
+    };
 
     # ardupilot_manager downloads glibc-dynamic ArduSub binaries at runtime.
     programs.nix-ld.enable = mkDefault true;
@@ -323,7 +336,10 @@ in
         "/usr/blueos"
         "/var/lib/blueos"
       ];
-      SupplementaryGroups = [ "docker" ];
+      SupplementaryGroups = [
+        "docker"
+        "podman"
+      ];
     };
 
     boot.kernel.sysctl = {
