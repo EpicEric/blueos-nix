@@ -18,6 +18,7 @@ let
   # zenoh and udev inputs that are not Python packages.
   blueos = cfg.package;
   src = blueos.passthru.src;
+  version = src.tag;
 
   # nginx runs as an unprivileged user under systemd, so the directives that
   # only make sense in the container (dropping privileges itself, owning the
@@ -263,6 +264,27 @@ in
         "i2c"
       ];
     };
+
+    users.motd = mkDefault ''
+
+         │       ___ _           ___  ___
+       ╶┘│└╴    | _ ) |_  _ ___ / _ \/ __|
+      ───┼───   | _ \ | || / -_) (_) \__ \
+       ╶┐│┌╴    |___/_|\_,_\___|\___/|___/
+         │
+
+      Welcome to BlueOS ${version}!
+
+      What you currently see is a tmux session built into BlueOS.
+
+      USAGE NOTES:
+      To check all current sessions, press ctrl+b then s
+      To split the screen horizontally, press ctrl+b then %
+      To split the screen vertically  press ctrl+b then "
+      To switch tabs, click them or press ctrl+b then use the directional keys in the keyboard
+
+      Happy Hacking!
+    '';
 
     # Docker exists on a BlueOS host for extensions only.
     virtualisation = {
