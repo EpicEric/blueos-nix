@@ -300,7 +300,13 @@ in
       };
       containers = {
         enable = mkDefault true;
-        containersConf.settings.compose_warning_logs = mkDefault false;
+        containersConf.settings.engine = {
+          compose_warning_logs = mkDefault false;
+          # Podman reserves published ports with bind() alone, which leaves no
+          # LISTEN socket. helper discovers extensions by scanning for one, so
+          # every extension on a bridge network disappears from the UI.
+          force_port_listen = mkDefault true;
+        };
         registries.settings.unqualified-search-registries = mkDefault [ "docker.io" ];
       };
     };
