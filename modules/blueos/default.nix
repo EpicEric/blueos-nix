@@ -281,15 +281,8 @@ in
 
       Welcome to BlueOS ${version}!
 
-      What you currently see is a tmux session built into BlueOS.
-
-      USAGE NOTES:
-      To check all current sessions, press ctrl+b then s
-      To split the screen horizontally, press ctrl+b then %
-      To split the screen vertically  press ctrl+b then "
-      To switch tabs, click them or press ctrl+b then use the directional keys in the keyboard
-
       Happy Hacking!
+
     '';
 
     users.groups = {
