@@ -1,0 +1,87 @@
+--- a/core/services/kraken/extension/extension.py
++++ b/core/services/kraken/extension/extension.py
+@@ -1,5 +1,6 @@
+ import asyncio
+ import base64
++import hashlib
+ import json
+ import os
+ import time
+@@ -25,6 +26,8 @@
+ from settings import ExtensionSettings, SettingsV2
+ from utils import has_enough_disk_space
+ 
++CONFIG_FINGERPRINT_LABEL = "blueos.config-fingerprint"
++
+ 
+ class Extension:
+     """
+@@ -123,6 +126,46 @@
+             config["HostConfig"]["LogConfig"] = {}
+         config["HostConfig"]["LogConfig"] = {"Type": "json-file", "Config": {"max-size": "20m", "max-file": "3"}}
+ 
++    @staticmethod
++    def _config_fingerprint(config: Dict[str, Any], image_id: str) -> str:
++        """Identify the requested configuration, so a restart can reuse a container.
++
++        Neither engine echoes the create request faithfully enough to compare
++        field by field: they rewrite binds (`:rw` becomes `:rw,rprivate,rbind`
++        on Podman), fill in defaults, and report `LogConfig.Config` as null. A
++        digest of what was requested is the only thing that can be compared.
++
++        The image id is included because a tag can be re-pulled onto a new
++        digest, and the container would otherwise keep running the old image.
++        """
++        payload = json.dumps({"config": config, "image": image_id}, sort_keys=True)
++        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
++
++    @staticmethod
++    async def _start_or_create(client: Any, name: str, config: Dict[str, Any], image_id: str) -> Any:
++        """Reuse the existing container when its configuration is unchanged.
++
++        aiodocker's `create_or_replace` compares the create request against the
++        full inspect body, so it never matches and every restart throws the
++        container away, losing its logs and writable layer.
++        """
++        fingerprint = Extension._config_fingerprint(config, image_id)
++        config.setdefault("Labels", {})[CONFIG_FINGERPRINT_LABEL] = fingerprint
++
++        try:
++            container = await client.containers.get(name)
++        except DockerError:
++            return await client.containers.create(config, name=name)
++
++        current = (container._container.get("Config") or {}).get("Labels") or {}
++        if current.get(CONFIG_FINGERPRINT_LABEL) == fingerprint:
++            return container
++
++        if container._container.get("State", {}).get("Running", False):
++            await container.stop()
++        await container.delete()
++        return await client.containers.create(config, name=name)
++
+     @classmethod
+     async def remove(cls, container_name: str, delete_image: bool = True) -> None:
+         try:
+@@ -274,7 +317,7 @@
+             async with DockerCtx() as client:
+                 # Checks if image exists locally, if not tries to pull it
+                 try:
+-                    await client.images.inspect(img_name)
++                    image = await client.images.inspect(img_name)
+                 except Exception:
+                     try:
+                         logger.info(f"Image not found locally, going to pull extension {self.identifier}:{self.tag}")
+@@ -291,10 +334,11 @@
+                         # A digest pull leaves the image untagged, so name it for the settings entry.
+                         if self.digest:
+                             await client.images.tag(reference, self.source.docker, tag=self.tag)
++                        image = await client.images.inspect(img_name)
+                     except Exception as error:
+                         raise ExtensionPullFailed(f"Failed to pull extension {self.identifier}:{self.tag}") from error
+ 
+-                container = await client.containers.create_or_replace(name=ext.container_name(), config=config)  # type: ignore
++                container = await Extension._start_or_create(client, ext.container_name(), config, image["Id"])
+                 await container.start()
+                 logger.info(f"Extension {self.identifier}:{self.tag} started")
+                 self.reset_start_attempt(self.unique_entry)

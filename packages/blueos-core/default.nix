@@ -39,6 +39,7 @@ let
       ./cable-guy-dhcpcd.patch
       ./helper-nginx-paths.patch
       ./kraken-podman-pull.patch
+      ./kraken-container-reuse.patch
       ./navigator-arch-detect.patch
       ./navigator-bmp390.patch
       ./navigator-nixos-serial-map.patch
