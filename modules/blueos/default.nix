@@ -55,7 +55,10 @@ let
   );
 in
 {
-  imports = [ ./services.nix ./version.nix ];
+  imports = [
+    ./services.nix
+    ./version.nix
+  ];
 
   options.services.blueos = {
     enable = mkOption {
@@ -288,6 +291,11 @@ in
 
       Happy Hacking!
     '';
+
+    users.groups = {
+      docker = { };
+      podman = { };
+    };
 
     # Docker exists on a BlueOS host for extensions only.
     virtualisation = {
