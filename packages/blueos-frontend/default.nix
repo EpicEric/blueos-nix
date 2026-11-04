@@ -100,6 +100,8 @@ stdenvNoCC.mkDerivation {
     writableTmpDirAsHomeHook
   ];
 
+  patches = [ ./podman-image-names.patch ];
+
   postPatch = ''
     ${submoduleCopy}
   '';
