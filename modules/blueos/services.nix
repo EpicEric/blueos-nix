@@ -62,6 +62,7 @@ let
       nice ? 0,
       user ? "root",
       path ? [ ],
+      after ? [ ],
       environment ? { },
       serviceConfig ? { },
       preStart ? "",
@@ -70,7 +71,7 @@ let
       description = "BlueOS ${name}";
       wantedBy = [ "blueos.target" ];
       partOf = [ "blueos.target" ];
-      after = [ "network.target" ];
+      after = [ "network.target" ] ++ after;
       restartTriggers = [ blueos ];
       # Units get coreutils only; the services shell out to host tools that
       # live in the system profile.
@@ -132,8 +133,12 @@ in
     };
 
     systemd.services = {
-      blueos-hardware-uuid = {
-        description = "BlueOS hardware uuid";
+      # Extensions read these through the host root: major_tom opens
+      # /host/etc/blueos/{hardware-uuid,uuid} at import time, and commonwealth's
+      # local_*_identifier() reads them here. Upstream has both files created by
+      # start-blueos-core and helper, which this system does not run.
+      blueos-uuids = {
+        description = "BlueOS hardware and software uuids";
         wantedBy = [ "blueos.target" ];
         before = [ "blueos.target" ];
         serviceConfig = {
@@ -143,6 +148,12 @@ in
         script = ''
           ${cfg.packages.machineid-cli}/bin/machineid-cli \
             --key blueos --parts cpu-cores cpuid mac-address > /etc/blueos/hardware-uuid
+
+          # Stable across boots and shared with the cloud, so it is written once
+          # rather than regenerated like the hardware uuid.
+          if [ ! -s /etc/blueos/uuid ]; then
+            ${pkgs.util-linux}/bin/uuidgen | ${pkgs.coreutils}/bin/tr -d '-' > /etc/blueos/uuid
+          fi
         '';
       };
 
@@ -274,6 +285,8 @@ in
         name = "helper";
         memoryMax = 250;
         exec = python "helper" [ ];
+        # commonwealth reads the uuid while this module is imported
+        after = [ "blueos-uuids.service" ];
         # reads the nginx config and reloads nginx through its pid file
         serviceConfig.ReadOnlyPaths = [ "/etc/blueos" ];
       };
