@@ -72,6 +72,15 @@ let
     # either way; under `boot` the reboot resets it anyway.
     ${config.systemd.package}/bin/systemctl restart blueos-rollback.timer 2>/dev/null || true
 
+    # Never arm the boot fallback without a generation to fall back to:
+    # altbootcmd boots good.conf, and a missing file leaves the board at the
+    # U-Boot prompt instead of starting a system. The runtime timer still
+    # protects the update, since state.json is already written.
+    if [ ! -s ${goodConf} ]; then
+      echo "no known-good generation yet, leaving the bootcount fallback disarmed" >&2
+      exit 0
+    fi
+
     if [ -d ${firmwareDir} ]; then
       printf '\275\001\000\001' > ${bootcountFile}
       sync ${bootcountFile} 2>/dev/null || sync
@@ -130,18 +139,22 @@ let
 
   rollback = pkgs.writeShellScript "blueos-rollback" ''
     set -eu
-    known_good=$(cat ${gcroot} 2>/dev/null || true)
-    if [ -z "$known_good" ] || [ ! -e "$known_good" ]; then
-      echo "no known-good generation recorded, leaving the system alone" >&2
-      exit 1
-    fi
 
     # The deadline runs at boot whether or not an update is pending, so the state
     # file decides: only a generation that was armed and never confirmed is a
-    # rollback. Anything else means this system has been fine all along.
+    # rollback. Anything else means this system has been fine all along, which is
+    # the ordinary case and must not fail the unit.
     if ! grep -q '"pending"' ${stateFile} 2>/dev/null; then
       echo "no update pending, nothing to roll back"
       exit 0
+    fi
+
+    # The known-good pointer is a symlink to a generation directory, so readlink
+    # is what yields the store path; cat would print the directory's contents.
+    known_good=$(readlink -f ${gcroot} 2>/dev/null || true)
+    if [ -z "$known_good" ] || [ ! -e "$known_good" ]; then
+      echo "update pending but no known-good generation recorded, leaving the system alone" >&2
+      exit 1
     fi
 
     # Re-checked here rather than trusted from the unit: a healthy generation
@@ -210,7 +223,10 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    system.preSwitchChecks.blueos-rollback-arm = "${arm}";
+    # The check text is inlined into a generated script whose $1 and $2 are the
+    # new toplevel and the action, so they have to be forwarded: a bare path
+    # would run the script as a child with no arguments at all.
+    system.preSwitchChecks.blueos-rollback-arm = "${arm} \"$1\" \"$2\"";
 
     systemd.services.blueos-boot-health = {
       description = "Confirm the running BlueOS generation";
