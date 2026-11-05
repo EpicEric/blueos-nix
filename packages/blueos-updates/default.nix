@@ -4,6 +4,8 @@
   cacert,
   makeWrapper,
   nix,
+  pkg-config,
+  aws-lc,
 }:
 rustPlatform.buildRustPackage {
   pname = "blueos-updates";
@@ -18,7 +20,12 @@ rustPlatform.buildRustPackage {
   # nix-env, nix-store and switch-to-configuration are how a version is
   # installed and activated, so they have to be on PATH rather than assumed
   # from the host.
-  nativeBuildInputs = [ makeWrapper ];
+  nativeBuildInputs = [
+    makeWrapper
+    pkg-config
+  ];
+
+  buildInputs = [ aws-lc ];
 
   postInstall = ''
     wrapProgram $out/bin/blueos-updates \
