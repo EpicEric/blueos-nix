@@ -41,6 +41,12 @@ in
     uboot.package = mkDefault ubootPackage;
   };
 
+  # U-Boot keeps its boot counter here, and the rollback timer has to delete it
+  # to confirm a generation, so the partition cannot stay noauto as in the base
+  # sd-image module. nofail is kept: a corrupt firmware partition must still
+  # leave a bootable system.
+  fileSystems."/boot/firmware".options = mkForce [ "nofail" ];
+
   sdImage = {
     populateRootCommands = ''
       mkdir -p ./files/boot
@@ -75,6 +81,7 @@ in
   services.blueos = {
     enable = mkDefault true;
     package = mkDefault blueos;
+    rollback.enable = mkDefault true;
   };
 
   documentation.enable = mkDefault false;

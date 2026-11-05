@@ -57,6 +57,7 @@ in
 {
   imports = [
     ./services.nix
+    ./rollback.nix
     ./version.nix
   ];
 

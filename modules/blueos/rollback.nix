@@ -1,0 +1,274 @@
+# Automatic rollback for a BlueOS SD card.
+#
+# Two layers, because they cover different failures:
+#
+#   - U-Boot abandons a generation that never reaches userspace. The firmware
+#     config points U-Boot at a bootcount file on the FAT partition; three
+#     failed attempts make it run altbootcmd, which boots good.conf instead of
+#     the extlinux menu. Nothing in the new generation has to work for this,
+#     which is the case that actually bricks a card.
+#   - A timer rolls back a generation that boots but is not healthy, or that
+#     never confirms. This is what a bad service or network configuration needs,
+#     since the bootloader cannot tell.
+#
+# Arming happens in a pre-switch check rather than an activation script:
+# switch-to-configuration exits before activating for `boot`, so an activation
+# script would miss every update that needs a reboot.
+{
+  config,
+  lib,
+  pkgs,
+  ...
+}:
+let
+  cfg = config.services.blueos.rollback;
+
+  stateDir = "/var/lib/blueos/updates";
+  stateFile = "${stateDir}/state.json";
+  firmwareDir = config.hardware.raspberry-pi.firmware.path;
+  bootcountFile = "${firmwareDir}/bootcount";
+
+  profile = "/nix/var/nix/profiles/system";
+  gcroot = "/nix/var/nix/gcroots/blueos/known-good";
+  goodConf = "/boot/extlinux/good.conf";
+
+  nix = config.nix.package.out;
+
+  # Taken from the configuration rather than matched by name: the BlueOS units
+  # are called ardupilot-manager, helper and so on, so no glob identifies them.
+  blueosUnits = lib.attrNames (
+    lib.filterAttrs (_: unit: lib.elem "blueos.target" (unit.wantedBy or [ ])) config.systemd.services
+  );
+
+  # The format is fixed by drivers/bootcount/bootcount_fs.c: magic, version,
+  # count, upgrade flag. Writing it directly arms the fallback for the next
+  # boot; deleting it disarms, since a missing file reads as zero.
+  arm = pkgs.writeShellScript "blueos-rollback-arm" ''
+    set -eu
+    toplevel=$(readlink -f "$1")
+    action=$2
+
+    # Only switch and boot change what the next boot runs. `test` activates
+    # without making the generation the default, so rolling it back would
+    # discard a system the operator did not ask to keep.
+    case "$action" in
+      switch|boot) ;;
+      *) exit 0 ;;
+    esac
+
+    # nixos-rebuild sets the profile before calling switch-to-configuration, so
+    # the profile already names this generation here. The running system is what
+    # says whether anything actually changed.
+    if [ "$toplevel" = "$(readlink -f /run/current-system)" ]; then
+      exit 0
+    fi
+
+    mkdir -p ${stateDir}
+    printf '{"pending":"%s","mode":"%s"}\n' "$toplevel" "$action" > ${stateFile}.tmp
+    mv ${stateFile}.tmp ${stateFile}
+
+    # The deadline is a boot timer, so it has already fired if this update came
+    # long after boot. Restarting it gives the new generation the full window
+    # either way; under `boot` the reboot resets it anyway.
+    ${config.systemd.package}/bin/systemctl restart blueos-rollback.timer 2>/dev/null || true
+
+    if [ -d ${firmwareDir} ]; then
+      printf '\275\001\000\001' > ${bootcountFile}
+      sync ${bootcountFile} 2>/dev/null || sync
+    fi
+  '';
+
+  # One check, called by the boot unit and again by the rollback deadline, so
+  # the two can never disagree about what "healthy" means.
+  healthCheckScript = pkgs.writeShellScript "blueos-health-check" ''
+    set -eu
+
+    failed=0
+    for unit in ${lib.concatMapStringsSep " " (u: "${u}.service") blueosUnits}; do
+      case "$(${config.systemd.package}/bin/systemctl is-failed "$unit" || true)" in
+        failed) echo "$unit failed to start" >&2; failed=1 ;;
+      esac
+    done
+    [ "$failed" -eq 0 ]
+
+    # The core is only up when nginx serves the status endpoint it proxies.
+    ${pkgs.curl}/bin/curl --fail --silent --max-time 30 http://127.0.0.1/status > /dev/null
+
+    ${cfg.healthCheck}
+  '';
+
+  # A generation only counts as known-good once its services came up, so this
+  # is a separate unit from the update daemon: a daemon that is itself broken
+  # cannot be the one to report that the system is fine.
+  confirm = pkgs.writeShellScript "blueos-rollback-confirm" ''
+    set -eu
+    toplevel=$(readlink -f ${profile})
+
+    rm -f ${bootcountFile}
+    sync
+
+    mkdir -p "$(dirname ${gcroot})"
+    ln -sfn "$toplevel" ${gcroot}
+
+    # altbootcmd boots this directly, so it bypasses the extlinux menu and
+    # cannot be confused by a generation that was written after it. Paths are
+    # absolute: a relative one would be resolved against /boot/extlinux.
+    mkdir -p "$(dirname ${goodConf})"
+    {
+      printf 'DEFAULT blueos-good\n'
+      printf 'LABEL blueos-good\n'
+      printf '  LINUX %s/kernel\n' "$toplevel"
+      printf '  INITRD %s/initrd\n' "$toplevel"
+      printf '  APPEND init=%s/init %s\n' "$toplevel" "$(cat "$toplevel/kernel-params")"
+    } > ${goodConf}.tmp
+    mv ${goodConf}.tmp ${goodConf}
+    sync
+
+    printf '{"knownGood":"%s"}\n' "$toplevel" > ${stateFile}.tmp
+    mv ${stateFile}.tmp ${stateFile}
+  '';
+
+  rollback = pkgs.writeShellScript "blueos-rollback" ''
+    set -eu
+    known_good=$(cat ${gcroot} 2>/dev/null || true)
+    if [ -z "$known_good" ] || [ ! -e "$known_good" ]; then
+      echo "no known-good generation recorded, leaving the system alone" >&2
+      exit 1
+    fi
+
+    # The deadline runs at boot whether or not an update is pending, so the state
+    # file decides: only a generation that was armed and never confirmed is a
+    # rollback. Anything else means this system has been fine all along.
+    if ! grep -q '"pending"' ${stateFile} 2>/dev/null; then
+      echo "no update pending, nothing to roll back"
+      exit 0
+    fi
+
+    # Re-checked here rather than trusted from the unit: a healthy generation
+    # whose confirmation never ran would otherwise be rolled back needlessly.
+    if ${healthCheckScript}; then
+      echo "the running generation is healthy, confirming it"
+      ${confirm}
+      exit 0
+    fi
+
+    # Already on the target and still unhealthy: rolling back again would loop
+    # forever. Leave it for the operator instead.
+    if [ "$(readlink -f ${profile})" = "$known_good" ]; then
+      echo "the known-good generation is itself unhealthy, refusing to loop" >&2
+      exit 1
+    fi
+
+    echo "rolling back to $known_good"
+    ${nix}/bin/nix-env --profile ${profile} --set "$known_good"
+    # This runs the pre-switch check of the target generation, which arms the
+    # rollback again. Undo that: the fallback has already been used, and a
+    # generation that fails to boot still needs the operator.
+    "$known_good/bin/switch-to-configuration" boot
+
+    rm -f ${bootcountFile}
+    printf '{"knownGood":"%s","rolledBackFrom":"%s"}\n' "$known_good" \
+      "$(readlink -f /run/current-system)" > ${stateFile}.tmp
+    mv ${stateFile}.tmp ${stateFile}
+    sync
+
+    ${config.systemd.package}/bin/systemctl reboot
+  '';
+in
+{
+  options.services.blueos.rollback = {
+    enable = lib.mkEnableOption "automatic rollback of a failed BlueOS update";
+
+    timeout = lib.mkOption {
+      type = lib.types.str;
+      default = "15min";
+      example = "30min";
+      description = ''
+        How long a freshly activated generation has to confirm itself before it
+        is rolled back. Services come up in seconds; the margin is for the
+        vehicle to reach the network, which is when a user can intervene.
+      '';
+    };
+
+    settleDelay = lib.mkOption {
+      type = lib.types.str;
+      default = "30s";
+      description = ''
+        How long to wait before judging a generation, so that services that
+        restart a few times on startup are not counted as failed.
+      '';
+    };
+
+    healthCheck = lib.mkOption {
+      type = lib.types.lines;
+      default = "";
+      description = ''
+        Extra shell commands run before a generation is confirmed. A non-zero
+        exit treats the generation as failed.
+      '';
+    };
+  };
+
+  config = lib.mkIf cfg.enable {
+    system.preSwitchChecks.blueos-rollback-arm = "${arm}";
+
+    systemd.services.blueos-boot-health = {
+      description = "Confirm the running BlueOS generation";
+      wantedBy = [ "multi-user.target" ];
+      # The check asks the services whether they came up, so it has to run after
+      # they were started rather than racing them.
+      after = [
+        "blueos.target"
+        "nginx.service"
+      ];
+      wants = [ "blueos.target" ];
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = true;
+        ExecStart = pkgs.writeShellScript "blueos-boot-health" ''
+          set -eu
+          sleep ${cfg.settleDelay}
+          ${healthCheckScript}
+          ${confirm}
+        '';
+      };
+    };
+
+    systemd.services.blueos-rollback = {
+      description = "Roll back to the last known-good BlueOS generation";
+      after = [ "blueos-boot-health.service" ];
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = rollback;
+      };
+    };
+
+    # Wanted at boot so a generation that hangs has a deadline too, rather than
+    # only one that failed a health check.
+    systemd.timers.blueos-rollback = {
+      description = "Deadline for the running BlueOS generation to confirm";
+      wantedBy = [ "timers.target" ];
+      timerConfig = {
+        # Relative to activation rather than to boot: the timer is active from
+        # boot, so this covers a generation left pending by a previous boot, and
+        # arming restarts it, which gives the new generation the full window.
+        # OnBootSec cannot be combined with it: with both set, systemd elapses at
+        # whichever comes first, so a restart after the boot offset had passed
+        # would fire the rollback immediately.
+        OnActiveSec = cfg.timeout;
+        Unit = "blueos-rollback.service";
+      };
+    };
+
+    # A rollback target is a store path that extlinux and the bootcount fallback
+    # both point at, so it has to survive garbage collection. It is kept through
+    # the gcroots/blueos symlink above; gc-keep-derivations would pin an entire
+    # build closure for a target that only needs to boot.
+
+    systemd.tmpfiles.rules = [
+      "d ${stateDir} 0755 root root -"
+      "d /nix/var/nix/gcroots/blueos 0755 root root -"
+      "d /boot/extlinux 0755 root root -"
+    ];
+  };
+}
