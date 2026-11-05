@@ -72,6 +72,21 @@ let
     # either way; under `boot` the reboot resets it anyway.
     ${config.systemd.package}/bin/systemctl restart blueos-rollback.timer 2>/dev/null || true
 
+    # The boot unit ran before this update existed, so without something else
+    # the new generation would stay unconfirmed until the deadline and only then
+    # be judged. This cannot be judged here: these checks run before the switch,
+    # so the profile already names the new generation while the old one is still
+    # what is running, and confirming now would record a build that never booted.
+    # A detached watcher waits for the switch to actually land instead.
+    ${config.systemd.package}/bin/systemctl stop blueos-confirm-after-switch.service 2>/dev/null || true
+    ${config.systemd.package}/bin/systemd-run \
+      --quiet --no-block --collect --system \
+      --unit=blueos-confirm-after-switch \
+      --service-type=oneshot \
+      --description="Confirm the generation an update just switched to" \
+      --setenv=PATH="$PATH" \
+      ${confirmAfterSwitch} "$toplevel" 2>/dev/null || true
+
     # Never arm the boot fallback without a generation to fall back to:
     # altbootcmd boots good.conf, and a missing file leaves the board at the
     # U-Boot prompt instead of starting a system. The runtime timer still
@@ -135,6 +150,44 @@ let
 
     printf '{"knownGood":"%s"}\n' "$toplevel" > ${stateFile}.tmp
     mv ${stateFile}.tmp ${stateFile}
+  '';
+
+  # Judges a generation that an update just switched to, without waiting for the
+  # deadline. The pre-switch check cannot do this itself: it runs before the
+  # switch, when the profile already names the new generation but the old one is
+  # still running, so judging there would confirm a build that never booted.
+  #
+  # The generation is passed in and compared against what is actually running, so
+  # a switch that never lands is left to the rollback timer rather than confirmed.
+  confirmAfterSwitch = pkgs.writeShellScript "blueos-confirm-after-switch" ''
+    set -eu
+    expected=$1
+
+    # The switch stops this unit if it is still waiting, and restarts it under
+    # the same name; either way the delay belongs to this unit's own lifetime.
+    deadline=$(( $(date +%s) + ${toString cfg.settleDelaySeconds} ))
+    while [ "$(date +%s)" -lt "$deadline" ]; do
+      sleep 1
+    done
+
+    running=$(readlink -f /run/current-system)
+    if [ "$running" != "$expected" ]; then
+      echo "still running $running, not confirming $expected" >&2
+      exit 0
+    fi
+
+    # A reboot is owed, so this generation has not run yet and cannot be judged.
+    case "$(readlink -f ${profile})" in
+      "$running") ;;
+      *) echo "a reboot is owed before $expected can be judged" >&2; exit 0 ;;
+    esac
+
+    if ${healthCheckScript}; then
+      echo "the generation the update switched to is healthy, confirming it"
+      ${confirm}
+    else
+      echo "the generation the update switched to is not healthy; leaving it to the deadline" >&2
+    fi
   '';
 
   rollback = pkgs.writeShellScript "blueos-rollback" ''
@@ -203,13 +256,22 @@ in
       '';
     };
 
-    settleDelay = lib.mkOption {
-      type = lib.types.str;
-      default = "30s";
+    settleDelaySeconds = lib.mkOption {
+      type = lib.types.ints.unsigned;
+      default = 30;
       description = ''
         How long to wait before judging a generation, so that services that
         restart a few times on startup are not counted as failed.
       '';
+    };
+
+    settleDelay = lib.mkOption {
+      type = lib.types.str;
+      internal = true;
+      readOnly = true;
+      default = "${toString cfg.settleDelaySeconds}s";
+      defaultText = lib.literalMD "`settleDelaySeconds`, in systemd's time-span syntax";
+      description = "`settleDelaySeconds` in the form systemd's `ExecStartPre` accepts.";
     };
 
     healthCheck = lib.mkOption {

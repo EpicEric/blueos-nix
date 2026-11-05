@@ -129,6 +129,30 @@ pub(crate) fn known_good() -> Option<PathBuf> {
     fs::canonicalize(KNOWN_GOOD_ROOT).ok()
 }
 
+/// The one generation to present as the rollback target.
+///
+/// Several links can point at a single closure: rebuilding an unchanged
+/// configuration makes a new generation for a build that is already there, so
+/// matching on the closure alone badges every one of them. Exactly one is
+/// chosen instead — the running generation when it is the recorded one,
+/// otherwise the newest that is.
+pub(crate) fn known_good_generation() -> Option<u32> {
+    let target = known_good()?;
+    let generations = all().ok()?;
+
+    let running = current_toplevel();
+    generations
+        .iter()
+        .find(|generation| running.as_deref() == Some(generation.toplevel.as_path()))
+        .filter(|generation| generation.toplevel == target)
+        .or_else(|| {
+            generations
+                .iter()
+                .find(|generation| generation.toplevel == target)
+        })
+        .map(|generation| generation.id)
+}
+
 /// Whether activating `candidate` needs a reboot before it takes effect. Mirrors
 /// what nixos-rebuild compares, plus the init interface version that
 /// `switch-to-configuration` refuses to activate across.
@@ -154,8 +178,13 @@ pub(crate) fn reboot_required(candidate: &Path) -> bool {
 
 impl Generation {
     pub(crate) fn info(&self) -> GenerationInfo {
+        self.info_with(known_good_generation())
+    }
+
+    /// `info` for the whole list at once, so one lookup decides the badge for
+    /// every generation instead of rescanning the profile per row.
+    pub(crate) fn info_with(&self, known_good: Option<u32>) -> GenerationInfo {
         let current = current_toplevel().as_deref() == Some(self.toplevel.as_path());
-        let known_good = known_good().as_deref() == Some(self.toplevel.as_path());
         GenerationInfo {
             generation: self.id,
             toplevel: self.toplevel.to_string_lossy().into_owned(),
@@ -172,7 +201,7 @@ impl Generation {
                 .unwrap_or_default(),
             created: self.created,
             current,
-            known_good,
+            known_good: known_good == Some(self.id),
             reboot_required: reboot_required(&self.toplevel),
         }
     }

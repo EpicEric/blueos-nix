@@ -174,14 +174,11 @@ fn current_generation() -> anyhow::Result<generations::Generation> {
 async fn status() -> Result<HttpResponse, ApiError> {
     let current = current_generation()?;
 
-    let known_good = generations::known_good()
-        .and_then(|toplevel| {
-            generations::all()
-                .ok()?
-                .into_iter()
-                .find(|generation| generation.toplevel == toplevel)
-        })
-        .map(|generation| generation.info());
+    let known_good_id = generations::known_good_generation();
+
+    let known_good = known_good_id
+        .and_then(generations::find)
+        .map(|generation| generation.info_with(known_good_id));
 
     // `nixos-rebuild boot` and the daemon's own `boot` mode move the profile
     // without changing what runs, so the two only differ while a reboot is owed.
@@ -195,7 +192,7 @@ async fn status() -> Result<HttpResponse, ApiError> {
                 .into_iter()
                 .find(|generation| generation.toplevel == toplevel)
         })
-        .map(|generation| generation.info());
+        .map(|generation| generation.info_with(known_good_id));
 
     let state = rollback_state();
     let pending = state.pending.map(|toplevel| PendingActivation {
@@ -221,9 +218,10 @@ async fn status() -> Result<HttpResponse, ApiError> {
 )]
 #[get("/generations")]
 async fn list_generations() -> Result<HttpResponse, ApiError> {
+    let known_good = generations::known_good_generation();
     let generations: Vec<GenerationInfo> = generations::all()?
         .iter()
-        .map(|generation| generation.info())
+        .map(|generation| generation.info_with(known_good))
         .collect();
 
     Ok(HttpResponse::Ok().json(GenerationsResponse { generations }))
@@ -311,7 +309,7 @@ async fn delete_generation(generation: web::Path<u32>) -> Result<HttpResponse, A
             format!("generation {number} is running"),
         ));
     }
-    if generations::known_good().as_deref() == Some(target.toplevel.as_path()) {
+    if generations::known_good_generation() == Some(number) {
         return Err(ApiError::new(
             StatusCode::CONFLICT,
             format!("generation {number} is the rollback target"),
