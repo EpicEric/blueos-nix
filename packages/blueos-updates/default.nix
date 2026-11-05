@@ -6,6 +6,7 @@
   nix,
   pkg-config,
   aws-lc,
+  systemd,
 }:
 rustPlatform.buildRustPackage {
   pname = "blueos-updates";
@@ -19,7 +20,8 @@ rustPlatform.buildRustPackage {
 
   # nix-env, nix-store and switch-to-configuration are how a version is
   # installed and activated, so they have to be on PATH rather than assumed
-  # from the host.
+  # from the host. systemd-run is what moves the switch out of this daemon's
+  # cgroup, so it is required too rather than taken from the host.
   nativeBuildInputs = [
     makeWrapper
     pkg-config
@@ -29,7 +31,12 @@ rustPlatform.buildRustPackage {
 
   postInstall = ''
     wrapProgram $out/bin/blueos-updates \
-      --suffix PATH : ${lib.makeBinPath [ nix ]} \
+      --suffix PATH : ${
+        lib.makeBinPath [
+          nix
+          systemd
+        ]
+      } \
       --set-default SSL_CERT_FILE ${cacert}/etc/ssl/certs/ca-bundle.crt
   '';
 

@@ -46,19 +46,22 @@ pub(crate) async fn activate(toplevel: &Path, mode: &str) -> anyhow::Result<Acti
         );
     }
 
-    let output = Command::new(toplevel.join("bin/switch-to-configuration"))
-        .arg(mode)
-        .output()
-        .await
-        .context("switch-to-configuration could not be started")?;
+    let output = switch(toplevel, mode).await?;
 
     // The profile is already set, so an incompatible init is a completed update
     // that needs a reboot rather than a failure.
     let incompatible = output.status.code() == Some(INCOMPATIBLE_INIT);
     if !incompatible && !output.status.success() {
+        // `switch-to-configuration` narrates its progress on stdout and only
+        // reports the failure itself on stderr, so both are needed to say what
+        // went wrong.
         bail!(
             "switch-to-configuration failed: {}",
-            detail(&String::from_utf8_lossy(&output.stderr))
+            detail(&format!(
+                "{}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            ))
         );
     }
 
@@ -70,6 +73,77 @@ pub(crate) async fn activate(toplevel: &Path, mode: &str) -> anyhow::Result<Acti
     Ok(Activation {
         toplevel: toplevel.to_string_lossy().into_owned(),
         reboot_required,
+    })
+}
+
+/// Run the generation's own `switch-to-configuration` outside this process's
+/// cgroup.
+///
+/// The switch restarts every BlueOS unit, and this daemon is one of them. As a
+/// plain child it is killed partway through its own switch, which leaves the
+/// profile moved, the update unconfirmed and the request unanswered. A
+/// transient unit is not part of this cgroup, so it runs to completion even when
+/// the daemon restarting is what it is doing; `--wait` blocks until it ends so
+/// the exit status still reaches the caller.
+///
+/// Output is captured through `StandardOutput=file:` rather than `--pipe`.
+/// `--pipe` hands the unit's streams to this process, so killing this process
+/// would kill the switch — exactly the coupling being removed. The files are
+/// created by systemd, which also means they survive this process going away
+/// mid-switch.
+///
+/// The PATH is forwarded explicitly. A transient unit otherwise starts with
+/// systemd's own default, which lacks coreutils, and the rollback pre-switch
+/// check runs `readlink` before it does anything else.
+async fn switch(toplevel: &Path, mode: &str) -> anyhow::Result<std::process::Output> {
+    let capture = std::env::temp_dir().join(format!(
+        "blueos-activate-{}-{}",
+        std::process::id(),
+        jiff::Timestamp::now().as_nanosecond()
+    ));
+    let stdout_path = capture.with_extension("out");
+    let stderr_path = capture.with_extension("err");
+
+    let status = Command::new("systemd-run")
+        .args([
+            "--quiet",
+            "--collect",
+            "--wait",
+            "--service-type=oneshot",
+            // The switch runs as root and restarts system units, so it must not
+            // be scoped to the caller's session.
+            "--system",
+            "--description=BlueOS update activation",
+            // A switch that hangs must not hold the request open forever.
+            "--property=TimeoutStartSec=15min",
+        ])
+        .arg(format!(
+            "--setenv=PATH={}",
+            std::env::var("PATH").unwrap_or_else(|_| "/run/current-system/sw/bin".to_string())
+        ))
+        .arg(format!(
+            "--property=StandardOutput=file:{}",
+            stdout_path.display()
+        ))
+        .arg(format!(
+            "--property=StandardError=file:{}",
+            stderr_path.display()
+        ))
+        .arg(toplevel.join("bin/switch-to-configuration"))
+        .arg(mode)
+        .status()
+        .await
+        .context("systemd-run could not be started")?;
+
+    let stdout = std::fs::read(&stdout_path).unwrap_or_default();
+    let stderr = std::fs::read(&stderr_path).unwrap_or_default();
+    let _ = std::fs::remove_file(&stdout_path);
+    let _ = std::fs::remove_file(&stderr_path);
+
+    Ok(std::process::Output {
+        status,
+        stdout,
+        stderr,
     })
 }
 
