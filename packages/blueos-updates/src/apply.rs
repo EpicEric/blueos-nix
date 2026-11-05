@@ -5,29 +5,37 @@
 //! pre-switch check arms itself exactly as it does for a manual deploy; there is
 //! deliberately no bookkeeping duplicated here.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
 
 use anyhow::{Context, bail};
 use tokio::process::Command;
 
-/// `switch-to-configuration` exits with this when the new generation's init is
-/// incompatible with the running one: it is installed, but only takes effect
-/// after a reboot.
-const INCOMPATIBLE_INIT: i32 = 100;
+/// Where the detached switch writes its output. It is next to the rollback
+/// state file so both halves of an update are found in one place.
+pub(crate) const SWITCH_LOG: &str = "/var/lib/blueos/updates/last-switch.log";
 
 pub(crate) struct Activation {
     pub(crate) toplevel: String,
     /// True when the generation cannot take effect until the machine reboots.
     pub(crate) reboot_required: bool,
+    /// The file the detached switch writes its progress and errors to.
+    pub(crate) log: String,
 }
 
-/// Point the system profile at `toplevel` and activate it.
+/// Point the system profile at `toplevel` and start activating it.
 ///
 /// The order is the one nixos-rebuild uses: set the profile, then let the
 /// generation activate itself. The rollback check compares the incoming
 /// toplevel against the *running* system rather than the profile, so it still
 /// arms despite the profile having already moved.
+///
+/// The switch is started, not awaited. It restarts every BlueOS unit, this
+/// daemon included, so the process answering this call is one of the processes
+/// the switch kills: waiting for it could only ever end in a dead client. The
+/// caller gets `Activation` as soon as the switch is queued and follows the
+/// outcome through the status endpoint, which reports the pending activation
+/// the rollback machinery records.
 pub(crate) async fn activate(toplevel: &Path, mode: &str) -> anyhow::Result<Activation> {
     let (status, stderr) = run(
         Command::new("nix-env").args([
@@ -46,105 +54,87 @@ pub(crate) async fn activate(toplevel: &Path, mode: &str) -> anyhow::Result<Acti
         );
     }
 
-    let output = switch(toplevel, mode).await?;
-
-    // The profile is already set, so an incompatible init is a completed update
-    // that needs a reboot rather than a failure.
-    let incompatible = output.status.code() == Some(INCOMPATIBLE_INIT);
-    if !incompatible && !output.status.success() {
-        // `switch-to-configuration` narrates its progress on stdout and only
-        // reports the failure itself on stderr, so both are needed to say what
-        // went wrong.
-        bail!(
-            "switch-to-configuration failed: {}",
-            detail(&format!(
-                "{}{}",
-                String::from_utf8_lossy(&output.stdout),
-                String::from_utf8_lossy(&output.stderr)
-            ))
-        );
-    }
+    start_switch(toplevel, mode).await?;
 
     // `boot` only installs the generation, so nothing takes effect until the
-    // machine reboots, whatever the incoming kernel looks like.
-    let reboot_required =
-        mode == "boot" || incompatible || crate::generations::reboot_required(toplevel);
+    // machine reboots, whatever the incoming kernel looks like. A `switch` only
+    // needs one when the kernel, initrd or init interface differ, which is what
+    // this compares, so it can be answered without waiting for the switch.
+    let reboot_required = mode == "boot" || crate::generations::reboot_required(toplevel);
 
     Ok(Activation {
         toplevel: toplevel.to_string_lossy().into_owned(),
         reboot_required,
+        log: SWITCH_LOG.to_string(),
     })
 }
 
-/// Run the generation's own `switch-to-configuration` outside this process's
-/// cgroup.
+/// Queue the generation's own `switch-to-configuration` in a transient unit and
+/// return, leaving it to run on its own.
 ///
-/// The switch restarts every BlueOS unit, and this daemon is one of them. As a
-/// plain child it is killed partway through its own switch, which leaves the
-/// profile moved, the update unconfirmed and the request unanswered. A
-/// transient unit is not part of this cgroup, so it runs to completion even when
-/// the daemon restarting is what it is doing; `--wait` blocks until it ends so
-/// the exit status still reaches the caller.
+/// `--no-block` is the point: the switch is not part of this process's cgroup,
+/// and this process does not wait for it. That is what lets the switch stop and
+/// restart the daemon that started it, which is the normal case for an update.
 ///
-/// Output is captured through `StandardOutput=file:` rather than `--pipe`.
-/// `--pipe` hands the unit's streams to this process, so killing this process
-/// would kill the switch — exactly the coupling being removed. The files are
-/// created by systemd, which also means they survive this process going away
-/// mid-switch.
+/// Output goes to a file rather than `--pipe`. `--pipe` hands the unit's streams
+/// to this process, so this process dying — which the switch causes — would take
+/// the switch with it.
 ///
-/// The PATH is forwarded explicitly. A transient unit otherwise starts with
+/// The PATH is forwarded explicitly: a transient unit otherwise starts with
 /// systemd's own default, which lacks coreutils, and the rollback pre-switch
 /// check runs `readlink` before it does anything else.
-async fn switch(toplevel: &Path, mode: &str) -> anyhow::Result<std::process::Output> {
-    let capture = std::env::temp_dir().join(format!(
-        "blueos-activate-{}-{}",
-        std::process::id(),
-        jiff::Timestamp::now().as_nanosecond()
-    ));
-    let stdout_path = capture.with_extension("out");
-    let stderr_path = capture.with_extension("err");
+async fn start_switch(toplevel: &Path, mode: &str) -> anyhow::Result<()> {
+    let log = PathBuf::from(SWITCH_LOG);
 
-    let status = Command::new("systemd-run")
+    let output = Command::new("systemd-run")
         .args([
             "--quiet",
+            "--no-block",
             "--collect",
-            "--wait",
             "--service-type=oneshot",
-            // The switch runs as root and restarts system units, so it must not
-            // be scoped to the caller's session.
+            // The switch restarts system units, so it must not be scoped to a
+            // caller's session.
             "--system",
             "--description=BlueOS update activation",
-            // A switch that hangs must not hold the request open forever.
+            // A switch that hangs must not hold the machine hostage.
             "--property=TimeoutStartSec=15min",
+            // Exit 100 means the generation is installed and needs a reboot,
+            // which is a completed update rather than a failure.
+            "--property=SuccessExitStatus=100",
         ])
+        .arg(format!("--unit=blueos-activate-{}", unique_suffix()))
         .arg(format!(
             "--setenv=PATH={}",
             std::env::var("PATH").unwrap_or_else(|_| "/run/current-system/sw/bin".to_string())
         ))
-        .arg(format!(
-            "--property=StandardOutput=file:{}",
-            stdout_path.display()
-        ))
-        .arg(format!(
-            "--property=StandardError=file:{}",
-            stderr_path.display()
-        ))
+        .arg(format!("--property=StandardOutput=file:{}", log.display()))
+        // Truncates rather than appends, so the log always describes the
+        // activation the status endpoint is currently reporting.
+        .arg(format!("--property=StandardError=file:{}", log.display()))
         .arg(toplevel.join("bin/switch-to-configuration"))
         .arg(mode)
-        .status()
+        .output()
         .await
         .context("systemd-run could not be started")?;
 
-    let stdout = std::fs::read(&stdout_path).unwrap_or_default();
-    let stderr = std::fs::read(&stderr_path).unwrap_or_default();
-    let _ = std::fs::remove_file(&stdout_path);
-    let _ = std::fs::remove_file(&stderr_path);
+    if !output.status.success() {
+        bail!(
+            "the activation could not be started: {}",
+            detail(&String::from_utf8_lossy(&output.stderr))
+        );
+    }
 
-    Ok(std::process::Output {
-        status,
-        stdout,
-        stderr,
-    })
+    Ok(())
+}
+
+/// A value that is unique per activation, so a queued switch is never mistaken
+/// for one already running.
+fn unique_suffix() -> String {
+    format!(
+        "{}-{}",
+        std::process::id(),
+        jiff::Timestamp::now().as_nanosecond()
+    )
 }
 
 /// Substitute a published closure from the binary cache. This is the "download"

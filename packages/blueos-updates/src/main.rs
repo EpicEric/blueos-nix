@@ -75,6 +75,9 @@ pub(crate) struct StatusResponse {
     /// back. It is what the UI shows to explain why the version changed on its
     /// own; it stays set until the next activation.
     rolled_back_from: Option<String>,
+    /// Output of the last activation's `switch-to-configuration`, which runs
+    /// detached and so reports nothing through the request that started it.
+    last_switch_log: Option<String>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -93,6 +96,9 @@ pub(crate) struct ActivationResponse {
     toplevel: String,
     reboot_required: bool,
     message: String,
+    /// Where the detached switch writes its progress. It is still running when
+    /// this response is sent, so the outcome is read from `/status`.
+    log: String,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -122,6 +128,19 @@ fn rollback_state() -> RollbackState {
         .ok()
         .and_then(|raw| serde_json::from_str(&raw).ok())
         .unwrap_or_default()
+}
+
+/// How much of the activation log is reported. The interesting part of a failed
+/// switch is where it stopped, which is at the end.
+const SWITCH_LOG_TAIL_BYTES: usize = 4096;
+
+/// The tail of the last detached switch's output, so a failure that happened
+/// after this daemon was restarted can still be explained.
+fn switch_log() -> Option<String> {
+    let raw = std::fs::read(apply::SWITCH_LOG).ok()?;
+    let start = raw.len().saturating_sub(SWITCH_LOG_TAIL_BYTES);
+    let text = String::from_utf8_lossy(&raw[start..]).trim().to_string();
+    (!text.is_empty()).then_some(text)
 }
 
 /// The running generation. It is normally one of the profile's own generations;
@@ -191,6 +210,7 @@ async fn status() -> Result<HttpResponse, ApiError> {
         known_good,
         pending,
         rolled_back_from: state.rolled_back_from,
+        last_switch_log: switch_log(),
     }))
 }
 
@@ -211,12 +231,16 @@ async fn list_generations() -> Result<HttpResponse, ApiError> {
 
 #[utoipa::path(
     summary = "Activate a generation",
+    description = "Switches the profile immediately and queues the activation. The switch \
+                   restarts the daemon answering this request, so the response is sent before it \
+                   runs; follow the outcome with GET /status, whose `pending` field is cleared \
+                   only once the new generation confirmed itself.",
     params(
         ("generation" = u32, Path, description = "Generation number"),
         ("mode" = Option<ActivateMode>, Query, description = "`switch` applies the generation now; `boot` installs it for the next boot"),
     ),
     responses(
-        (status = 200, description = "Activated", body = ActivationResponse),
+        (status = 202, description = "Activation queued", body = ActivationResponse),
         (status = 404, description = "No such generation", body = error::ErrorBody),
     ),
     tag = "generations",
@@ -232,21 +256,22 @@ async fn activate_generation(
 
     let outcome = apply::activate(&target.toplevel, params.mode.as_str()).await?;
 
-    Ok(HttpResponse::Ok().json(ActivationResponse {
+    Ok(HttpResponse::Accepted().json(ActivationResponse {
         toplevel: outcome.toplevel,
         reboot_required: outcome.reboot_required,
         message: if outcome.reboot_required {
             format!("Generation {number} is installed; reboot to boot into it.")
         } else {
-            format!("Switched to generation {number}.")
+            format!("Switching to generation {number}.")
         },
+        log: outcome.log,
     }))
 }
 
 #[utoipa::path(
     summary = "Restart the running generation without changing it",
     responses(
-        (status = 200, description = "Restarted", body = ActivationResponse),
+        (status = 202, description = "Restart queued", body = ActivationResponse),
         (status = 500, description = "Activation failed", body = error::ErrorBody),
     ),
     tag = "status",
@@ -256,10 +281,11 @@ async fn restart() -> Result<HttpResponse, ApiError> {
     let current = current_generation()?;
     let outcome = apply::activate(&current.toplevel, "switch").await?;
 
-    Ok(HttpResponse::Ok().json(ActivationResponse {
+    Ok(HttpResponse::Accepted().json(ActivationResponse {
         toplevel: outcome.toplevel,
         reboot_required: outcome.reboot_required,
-        message: "Restarted the BlueOS services.".to_string(),
+        message: "Restarting the BlueOS services.".to_string(),
+        log: outcome.log,
     }))
 }
 
@@ -324,7 +350,7 @@ async fn list_releases(data: web::Data<AppState>) -> Result<HttpResponse, ApiErr
         ("mode" = Option<ActivateMode>, Query, description = "`switch` applies the generation now; `boot` installs it for the next boot"),
     ),
     responses(
-        (status = 200, description = "Activated", body = ActivationResponse),
+        (status = 202, description = "Activation queued", body = ActivationResponse),
         (status = 404, description = "Not published for this board", body = error::ErrorBody),
         (status = 502, description = "The manifest could not be read, or the build could not be downloaded", body = error::ErrorBody),
     ),
@@ -345,14 +371,15 @@ async fn activate_release(
     apply::realise(&target.toplevel).await?;
     let outcome = apply::activate(Path::new(&target.toplevel), params.mode.as_str()).await?;
 
-    Ok(HttpResponse::Ok().json(ActivationResponse {
+    Ok(HttpResponse::Accepted().json(ActivationResponse {
         toplevel: outcome.toplevel,
         reboot_required: outcome.reboot_required,
         message: if outcome.reboot_required {
             format!("{version} is installed; reboot to boot into it.")
         } else {
-            format!("Updated to {version}.")
+            format!("Switching to {version}.")
         },
+        log: outcome.log,
     }))
 }
 
