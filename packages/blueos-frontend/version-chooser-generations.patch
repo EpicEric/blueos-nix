@@ -1325,7 +1325,7 @@ index 0898694..0000000
 -})
 -</script>
 diff --git a/core/frontend/src/components/version-chooser/VersionChooser.vue b/core/frontend/src/components/version-chooser/VersionChooser.vue
-index ff1775d..24fe657 100644
+index ff1775d..e9c1c83 100644
 --- a/core/frontend/src/components/version-chooser/VersionChooser.vue
 +++ b/core/frontend/src/components/version-chooser/VersionChooser.vue
 @@ -1,64 +1,135 @@
@@ -1498,7 +1498,7 @@ index ff1775d..24fe657 100644
              >
                Retry
              </v-btn>
-@@ -67,689 +138,390 @@
+@@ -67,689 +138,419 @@
        </v-card>
  
        <v-card
@@ -1638,7 +1638,8 @@ index ff1775d..24fe657 100644
 +          v-if="loading && releases.length === 0"
            size="15%"
 -          subtitle="Loading remote images..."
--        />
++          subtitle="Loading available versions..."
+         />
 -        <version-card
 -          v-for="(image, index) in paginatedComponents"
 -          v-else
@@ -1648,8 +1649,7 @@ index ff1775d..24fe657 100644
 -          :update-available="updateIsAvailable(image)"
 -          :show-pull-button="!imageIsAvailableLocally(image.sha)"
 -          @pull-and-apply="pullAndSetVersion"
-+          subtitle="Loading available versions..."
-         />
+-        />
 -        <v-card-actions
 -          v-if="!loading_images"
 -          class="justify-center"
@@ -1755,7 +1755,7 @@ index ff1775d..24fe657 100644
  import {
 -  isServerResponse,
 -  LocalVersionsQuery, Version, VersionsQuery, VersionType,
-+  ActivationMode, Generation, Release, Status,
++  ActivationMode, ActivationResponse, Generation, Release, Status,
  } from '@/types/version-chooser'
 -import back_axios from '@/utils/api'
 -import PullTracker from '@/utils/pull_tracker'
@@ -1780,6 +1780,9 @@ index ff1775d..24fe657 100644
 + */
 +const BACKEND_OFFLINE_TIMEOUT_MS = 20000
 +const BACKEND_ONLINE_TIMEOUT_MS = 120000
++/** A switch restarts every service, so it is given the same window the daemon
++ * allows it before giving up. */
++const ACTIVATION_TIMEOUT_MS = 5 * 60 * 1000
 +const POLL_INTERVAL_MS = 1000
 +
  export default Vue.extend({
@@ -1861,19 +1864,7 @@ index ff1775d..24fe657 100644
 -    filteredRemoteVersions(): Version[] {
 -      if (!this.showRemoteSearch || !this.search) {
 -        return this.available_versions.remote
-+    working(): boolean {
-+      return this.loading || this.waiting
-+        || this.activating !== null
-+        || this.activating_release !== null
-+        || this.downloading_release !== null
-+    },
-+    latest_stable(): string {
-+      return VCU.latestRelease(this.releases, false)?.version ?? ''
-+    },
-+    latest_version(): Release | undefined {
-+      if (!this.status) {
-+        return undefined
-       }
+-      }
 -      return this.fuse.search(this.search).map(({ item }) => item)
 -    },
 -    paginatedComponents(): Version[] {
@@ -1894,21 +1885,25 @@ index ff1775d..24fe657 100644
 -    can_fetch_remote(): boolean {
 -      return this.internet_state === InternetConnectionState.ONLINE
 -        || this.internet_state === InternetConnectionState.LIMITED
-+      return VCU.getAvailableUpdate(this.status.current.version, this.releases)
-     },
+-    },
 -    remote_alert_message(): string | null {
 -      if (this.is_offline) {
 -        return "No internet connection available, can't fetch remote images"
-+    /** Without pirate mode only the newest stable build is offered. */
-+    visible_releases(): Release[] {
-+      const sorted = VCU.sortReleases(this.releases)
-+      if (this.settings.is_pirate_mode) {
-+        return sorted.slice(0, 10)
++    working(): boolean {
++      return this.loading || this.waiting
++        || this.activating !== null
++        || this.activating_release !== null
++        || this.downloading_release !== null
++    },
++    latest_stable(): string {
++      return VCU.latestRelease(this.releases, false)?.version ?? ''
++    },
++    latest_version(): Release | undefined {
++      if (!this.status) {
++        return undefined
        }
 -      return this.available_versions.error
-+      const stable = sorted.filter((release) => VCU.isSemVer(release.version)
-+        && !VCU.isPreRelease(release.version))
-+      return stable.slice(0, 1)
++      return VCU.getAvailableUpdate(this.status.current.version, this.releases)
      },
 -  },
 -  watch: {
@@ -1918,8 +1913,16 @@ index ff1775d..24fe657 100644
 -    is_offline(offline: boolean) {
 -      if (offline) {
 -        this.resetToNoInternetAvailable()
--      }
--    },
++    /** Without pirate mode only the newest stable build is offered. */
++    visible_releases(): Release[] {
++      const sorted = VCU.sortReleases(this.releases)
++      if (this.settings.is_pirate_mode) {
++        return sorted.slice(0, 10)
+       }
++      const stable = sorted.filter((release) => VCU.isSemVer(release.version)
++        && !VCU.isPreRelease(release.version))
++      return stable.slice(0, 1)
+     },
 -    can_fetch_remote(can_fetch: boolean) {
 -      if (can_fetch) {
 -        this.loadAvailableVersions()
@@ -1947,17 +1950,8 @@ index ff1775d..24fe657 100644
 -            resolve(false)
 -          })
 -      })
-+    /**
-+     * The status endpoint is also how the frontend finds out whether the backend
-+     * is up at all, so it is polled directly: `back_axios` would treat the
-+     * restart as an offline backend and reject every call for a while.
-+     */
-+    async backendIsOnline(): Promise<boolean> {
-+      return fetch('/updates/v1.0/status', { method: 'GET' })
-+        .then((response) => response.ok)
-+        .catch(() => false)
-     },
- 
+-    },
+-
 -    async waitForBackendToGoOffline() {
 -      let timeout = 0
 -      let interval = 0
@@ -1979,8 +1973,17 @@ index ff1775d..24fe657 100644
 -          })
 -        }, 1000)
 -      })
--    },
--
++    /**
++     * The status endpoint is also how the frontend finds out whether the backend
++     * is up at all, so it is polled directly: `back_axios` would treat the
++     * restart as an offline backend and reject every call for a while.
++     */
++    async backendIsOnline(): Promise<boolean> {
++      return fetch('/updates/v1.0/status', { method: 'GET' })
++        .then((response) => response.ok)
++        .catch(() => false)
+     },
+ 
 -    waitForBackendToGoOnline() {
 -      let timeout = 0
 -      let interval = 0
@@ -2032,11 +2035,7 @@ index ff1775d..24fe657 100644
  
 -    runningBeta() {
 -      return VCU.getVersionType(this.current_version) === VersionType.Beta
-+    async refresh(): Promise<void> {
-+      this.loading = true
-+      await Promise.all([this.loadStatus(), this.loadGenerations(), this.loadReleases()])
-+      this.loading = false
-     },
+-    },
 -    newBetaAvailable() {
 -      if (!this.current_version) {
 -        return ''
@@ -2045,7 +2044,11 @@ index ff1775d..24fe657 100644
 -        return this.latest_beta
 -      }
 -      return ''
--    },
++    async refresh(): Promise<void> {
++      this.loading = true
++      await Promise.all([this.loadStatus(), this.loadGenerations(), this.loadReleases()])
++      this.loading = false
+     },
 -    newStableAvailable() {
 -      if (!this.current_version || !VCU.isSemVer(this.current_version.tag)) {
 -        return ''
@@ -2088,10 +2091,10 @@ index ff1775d..24fe657 100644
 -      if (!this.can_fetch_remote) {
 -        return
 -      }
- 
+-
 -      this.loading_images = true
 -      this.available_versions.error = null
--
+ 
 -      await VCU.loadAvailableVersions(this.selected_image)
 -        .then((versions_query) => {
 -          this.available_versions = versions_query
@@ -2170,8 +2173,14 @@ index ff1775d..24fe657 100644
 -        .then(() => {
 -          this.show_pull_output = false
 -          this.setVersion(fullname)
--        })
--        .catch((error) => {
++
++    async loadReleases(): Promise<void> {
++      await VCU.loadReleases()
++        .then((response) => {
++          this.releases = response.releases
++          this.releases_error = response.error
+         })
+         .catch((error) => {
 -          this.show_pull_output = false
 -          notifier.pushError(
 -            'VERSION_CHOOSER_PULL_FAIL',
@@ -2198,7 +2207,7 @@ index ff1775d..24fe657 100644
 -            reject(error)
 -          },
 -        )
- 
+-
 -        back_axios({
 -          url: '/version-chooser/v1.0/version/pull/',
 -          method: 'POST',
@@ -2217,12 +2226,15 @@ index ff1775d..24fe657 100644
 -        }).then((response) => {
 -          if (response.data.error) {
 -            reject(response.data.error)
--          }
++          if (isBackendOffline(error)) {
++            return
+           }
 -          this.show_pull_output = false
 -          resolve()
--        })
++          this.releases_error = VCU.describeError(error)
+         })
 -      })
--    },
+     },
 -    async updateBootstrap(image: string) {
 -      const [_, tag] = image.split(':')
 -      this.updating_bootstrap = true
@@ -2230,25 +2242,49 @@ index ff1775d..24fe657 100644
 -        .then(() => {
 -          this.show_pull_output = false
 -          this.setBootstrapVersion(tag)
-+    async loadReleases(): Promise<void> {
-+      await VCU.loadReleases()
-+        .then((response) => {
-+          this.releases = response.releases
-+          this.releases_error = response.error
-         })
-         .catch((error) => {
+-        })
+-        .catch((error) => {
 -          this.show_pull_output = false
 -          notifier.pushError(
 -            'BOOTSTRAP_UPDATE_FAIL',
 -            `The operation failed: ${error}`,
 -            true,
 -          )
-+          if (isBackendOffline(error)) {
-+            return
-+          }
-+          this.releases_error = VCU.describeError(error)
-         })
+-        })
 -      this.updating_bootstrap = false
++
++    async activate(generation: Generation, mode: ActivationMode): Promise<void> {
++      this.activating = generation.generation
++      this.waiting = true
++      this.waiting_text = mode === 'boot'
++        ? `Installing ${generation.version}...`
++        : `Switching to ${generation.version}...`
++      try {
++        const outcome = await VCU.activateGeneration(generation.generation, mode)
++        // `boot` leaves the running system alone, so there is nothing to wait
++        // for: the generation only takes over at the next reboot.
++        if (!outcome.reboot_required) {
++          this.waiting_text = 'Waiting for the switch to finish...'
++          await this.waitForActivation(outcome, generation.version)
++          window.location.reload()
++          return
++        }
++        notifier.pushSuccess(
++          'VERSION_CHOOSER_ACTIVATE_SUCCESS',
++          `${generation.version} is installed. Reboot to boot into it.`,
++          true,
++        )
++      } catch (error) {
++        notifier.pushError(
++          'VERSION_CHOOSER_ACTIVATE_FAIL',
++          `Could not switch to ${generation.version}: ${VCU.describeError(error)}`,
++          true,
++        )
++      } finally {
++        this.activating = null
++        this.waiting = false
++        await this.refresh()
++      }
      },
 -    async setBootstrapVersion(version: string) {
 -      await back_axios({
@@ -2266,42 +2302,58 @@ index ff1775d..24fe657 100644
 -            true,
 -          )
 +
-+    async activate(generation: Generation, mode: ActivationMode): Promise<void> {
-+      this.activating = generation.generation
-+      this.waiting = true
-+      this.waiting_text = mode === 'boot'
-+        ? `Installing ${generation.version}...`
-+        : `Switching to ${generation.version}...`
-+      try {
-+        const outcome = await VCU.activateGeneration(generation.generation, mode)
-+        // `boot` leaves the running system alone, so there is nothing to wait
-+        // for: the generation only takes over at the next reboot.
-+        if (!outcome.reboot_required) {
-+          this.waiting_text = 'Waiting for the services to restart...'
-+          await this.waitForBackend(true)
-+          await this.waitForBackend(false)
-+          window.location.reload()
++    /**
++     * The daemon answers an activation with 202 and then gets restarted by the
++     * switch it started, so there is no response left to read the outcome from.
++     * Polling `/status` is, and it ends when the generation we asked for is what
++     * is running. Waiting for the daemon to go away first would race: a fast
++     * switch can finish before a poll ever observes it offline.
++     */
++    async waitForActivation(outcome: ActivationResponse, label: string): Promise<void> {
++      const deadline = Date.now() + ACTIVATION_TIMEOUT_MS
++
++      while (Date.now() < deadline) {
++        // eslint-disable-next-line no-await-in-loop
++        const status = await VCU.loadStatus().catch(() => undefined)
++        if (status?.current.toplevel === outcome.toplevel) {
            return
          }
++        // eslint-disable-next-line no-await-in-loop
++        await new Promise((resolve) => { setTimeout(resolve, POLL_INTERVAL_MS) })
++      }
++
++      // The daemon is back but still reports the old generation, so the switch
++      // failed after it started. Its output is the only account of why.
++      const status = await VCU.loadStatus().catch(() => undefined)
++      const detail = status?.last_switch_log ?? 'no output was recorded'
++      throw new Error(`${label} did not start within the deadline: ${detail}`)
++    },
++
++    async install(release: Release): Promise<void> {
++      this.activating_release = release.version
++      this.waiting = true
++      this.waiting_text = `Downloading ${release.version}...`
++      try {
++        await VCU.activateRelease(release.version, 'boot')
          notifier.pushSuccess(
 -          'VERSION_CHOOSER_BOOTSTRAP_SET_SUCCESS',
 -          `Successfully updated bootstrap version to ${version}`,
-+          'VERSION_CHOOSER_ACTIVATE_SUCCESS',
-+          `${generation.version} is installed. Reboot to boot into it.`,
++          'VERSION_CHOOSER_INSTALL_SUCCESS',
++          `${release.version} is installed. Reboot to boot into it.`,
            true,
          )
 -        window.location.reload()
 -      })
++        await this.refresh()
 +      } catch (error) {
 +        notifier.pushError(
-+          'VERSION_CHOOSER_ACTIVATE_FAIL',
-+          `Could not switch to ${generation.version}: ${VCU.describeError(error)}`,
++          'VERSION_CHOOSER_INSTALL_FAIL',
++          `Could not install ${release.version}: ${VCU.describeError(error)}`,
 +          true,
 +        )
 +      } finally {
-+        this.activating = null
++        this.activating_release = null
 +        this.waiting = false
-+        await this.refresh()
 +      }
      },
 -    async setVersion(args: string | string[]) {
@@ -2315,33 +2367,6 @@ index ff1775d..24fe657 100644
 -          tag,
 -        },
 -      }).finally(() => { this.waitForBackendToRestart(true) })
-+
-+    async install(release: Release): Promise<void> {
-+      this.activating_release = release.version
-+      this.waiting = true
-+      this.waiting_text = `Downloading ${release.version}...`
-+      try {
-+        await VCU.activateRelease(release.version, 'boot')
-+        notifier.pushSuccess(
-+          'VERSION_CHOOSER_INSTALL_SUCCESS',
-+          `${release.version} is installed. Reboot to boot into it.`,
-+          true,
-+        )
-+        await this.refresh()
-+      } catch (error) {
-+        notifier.pushError(
-+          'VERSION_CHOOSER_INSTALL_FAIL',
-+          `Could not install ${release.version}: ${VCU.describeError(error)}`,
-+          true,
-+        )
-+      } finally {
-+        this.activating_release = null
-+        this.waiting = false
-+      }
-     },
--    async deleteVersion(args: string | string[]) {
--      const fullname: string = Array.isArray(args) ? args[0] : args
--      if (this.deleting === fullname) {
 +
 +    async download(release: Release): Promise<void> {
 +      this.downloading_release = release.version
@@ -2361,7 +2386,10 @@ index ff1775d..24fe657 100644
 +      } finally {
 +        this.downloading_release = null
 +      }
-+    },
+     },
+-    async deleteVersion(args: string | string[]) {
+-      const fullname: string = Array.isArray(args) ? args[0] : args
+-      if (this.deleting === fullname) {
 +
 +    async deleteGeneration(generation: Generation): Promise<void> {
 +      const label = `${generation.version} (generation ${generation.generation})`
@@ -2467,10 +2495,10 @@ index ff1775d..24fe657 100644
    },
  })
 diff --git a/core/frontend/src/types/version-chooser.ts b/core/frontend/src/types/version-chooser.ts
-index 96a50a4..2b948f3 100644
+index 96a50a4..dc061e1 100644
 --- a/core/frontend/src/types/version-chooser.ts
 +++ b/core/frontend/src/types/version-chooser.ts
-@@ -1,49 +1,65 @@
+@@ -1,49 +1,69 @@
 -export interface Version {
 -  repository: string,
 -  tag: string,
@@ -2518,6 +2546,8 @@ index 96a50a4..2b948f3 100644
 +  reboot_required: boolean,
 +  /** The generation that failed and was rolled back away from, if the system did. */
 +  rolled_back_from: (string | null),
++  /** Tail of the last activation's output, which runs detached from its request. */
++  last_switch_log: (string | null),
  }
  
 -export interface LocalVersionsQuery {
@@ -2553,6 +2583,8 @@ index 96a50a4..2b948f3 100644
 +  toplevel: string,
 +  reboot_required: boolean,
 +  message: string,
++  /** Where the detached switch writes its progress. */
++  log: string,
  }
  
 -export interface DockerLoginInfo {
