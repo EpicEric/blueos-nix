@@ -13,6 +13,7 @@ mod generations;
 mod manifest;
 
 use std::future::Future;
+use std::path::Path;
 
 use actix_web::http::StatusCode;
 use actix_web::{HttpResponse, delete, get, post, web};
@@ -317,6 +318,62 @@ async fn list_releases(data: web::Data<AppState>) -> Result<HttpResponse, ApiErr
 }
 
 #[utoipa::path(
+    summary = "Install a published build and activate it",
+    params(
+        ("version" = String, Path, description = "Version published in the manifest"),
+        ("mode" = Option<ActivateMode>, Query, description = "`switch` applies the generation now; `boot` installs it for the next boot"),
+    ),
+    responses(
+        (status = 200, description = "Activated", body = ActivationResponse),
+        (status = 404, description = "Not published for this board", body = error::ErrorBody),
+        (status = 502, description = "The manifest could not be read, or the build could not be downloaded", body = error::ErrorBody),
+    ),
+    tag = "releases",
+)]
+#[post("/releases/{version}/activate")]
+async fn activate_release(
+    version: web::Path<String>,
+    params: web::Query<ActivateParams>,
+    data: web::Data<AppState>,
+) -> Result<HttpResponse, ApiError> {
+    let version = version.into_inner();
+    let target = published_release(&version, &data).await?;
+
+    // Activation sets the profile to the store path directly, which is how a
+    // downloaded build becomes a generation. Realising first means a closure
+    // that is not in the cache fails before the profile moves.
+    apply::realise(&target.toplevel).await?;
+    let outcome = apply::activate(Path::new(&target.toplevel), params.mode.as_str()).await?;
+
+    Ok(HttpResponse::Ok().json(ActivationResponse {
+        toplevel: outcome.toplevel,
+        reboot_required: outcome.reboot_required,
+        message: if outcome.reboot_required {
+            format!("{version} is installed; reboot to boot into it.")
+        } else {
+            format!("Updated to {version}.")
+        },
+    }))
+}
+
+async fn published_release(version: &str, data: &AppState) -> Result<manifest::Release, ApiError> {
+    let releases = data
+        .releases()
+        .await
+        .map_err(|error| ApiError::bad_gateway(format!("{error:#}")))?;
+
+    releases
+        .into_iter()
+        .find(|release| release.version == version)
+        .ok_or_else(|| {
+            ApiError::not_found(format!(
+                "version {version} is not published for {}",
+                data.board
+            ))
+        })
+}
+
+#[utoipa::path(
     summary = "Download a published build into the store",
     params(("version" = String, Path, description = "Version published in the manifest")),
     responses(
@@ -332,25 +389,12 @@ async fn download_release(
     data: web::Data<AppState>,
 ) -> Result<HttpResponse, ApiError> {
     let version = version.into_inner();
-    let releases = data
-        .releases()
-        .await
-        .map_err(|error| ApiError::bad_gateway(format!("{error:#}")))?;
+    let target = published_release(&version, &data).await?;
 
-    let release = releases
-        .into_iter()
-        .find(|release| release.version == version)
-        .ok_or_else(|| {
-            ApiError::not_found(format!(
-                "version {version} is not published for {}",
-                data.board
-            ))
-        })?;
-
-    apply::realise(&release.toplevel).await?;
+    apply::realise(&target.toplevel).await?;
 
     Ok(HttpResponse::Ok().json(DownloadResponse {
-        toplevel: release.toplevel,
+        toplevel: target.toplevel,
         message: format!("Downloaded {version}."),
     }))
 }
@@ -414,6 +458,7 @@ async fn main() -> std::io::Result<()> {
                     .service(activate_generation)
                     .service(delete_generation)
                     .service(list_releases)
+                    .service(activate_release)
                     .service(download_release),
             )
             .split_for_parts();
