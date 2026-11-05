@@ -43,7 +43,6 @@ let
       ./navigator-arch-detect.patch
       ./navigator-bmp390.patch
       ./navigator-nixos-serial-map.patch
-      ./versionchooser-podman-pull.patch
     ];
   };
 
@@ -96,7 +95,6 @@ let
     "nmea_injector"
     "pardal"
     "ping"
-    "versionchooser"
     "wifi"
   ];
 
