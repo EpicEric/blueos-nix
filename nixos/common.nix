@@ -8,6 +8,7 @@
   lib,
   pkgs,
   blueos,
+  ubootPackage,
   sdImageModule,
   ...
 }:
@@ -35,6 +36,9 @@ in
     # Loaded by the GPU firmware before U-Boot, which then keeps the device tree
     # the firmware built from config.txt.
     uboot.enable = mkDefault true;
+    # Bootcount support, which the stock U-Boot build lacks, so that a
+    # generation that never reaches userspace can be abandoned automatically.
+    uboot.package = mkDefault ubootPackage;
   };
 
   sdImage = {

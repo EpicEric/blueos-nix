@@ -93,6 +93,16 @@
               else
                 self.packages.aarch64-linux.blueos-core;
             sdImageModule = "${nixpkgs}/nixos/modules/installer/sd-card/sd-image.nix";
+            # The flake's own U-Boot build, which has the bootcount fallback the
+            # stock package lacks. Passed as an argument because the module's
+            # `pkgs` is nixpkgs, which does not know about this repo's packages.
+            # Resolved from the board's own package set so that a native ARM
+            # runner builds it natively and an x86_64 one cross-compiles it.
+            ubootPackage =
+              if cross then
+                crossPkgs.callPackage ./packages/uboot-rpi { }
+              else
+                nixpkgs.legacyPackages.aarch64-linux.callPackage ./packages/uboot-rpi { };
             # Null for a dirty tree and for a plain path flake; version.nix
             # reports that as "unknown" rather than failing the build.
             blueosNixRev = self.rev or self.dirtyRev or null;
