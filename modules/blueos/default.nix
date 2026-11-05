@@ -250,6 +250,11 @@ in
       }
     ];
 
+    nix.gc = {
+      automatic = mkDefault true;
+      dates = mkDefault "weekly";
+    };
+
     networking.hostName = mkDefault cfg.hostname;
 
     # BlueOS extensions listen on ports of their own choosing, so a per-port
