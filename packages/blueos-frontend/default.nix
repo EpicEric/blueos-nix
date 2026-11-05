@@ -100,7 +100,10 @@ stdenvNoCC.mkDerivation {
     writableTmpDirAsHomeHook
   ];
 
-  patches = [ ./podman-image-names.patch ];
+  patches = [
+    ./podman-image-names.patch
+    ./version-chooser-generations.patch
+  ];
 
   postPatch = ''
     ${submoduleCopy}
