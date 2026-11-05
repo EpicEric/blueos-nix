@@ -62,9 +62,14 @@ pub(crate) async fn activate(toplevel: &Path, mode: &str) -> anyhow::Result<Acti
         );
     }
 
+    // `boot` only installs the generation, so nothing takes effect until the
+    // machine reboots, whatever the incoming kernel looks like.
+    let reboot_required =
+        mode == "boot" || incompatible || crate::generations::reboot_required(toplevel);
+
     Ok(Activation {
         toplevel: toplevel.to_string_lossy().into_owned(),
-        reboot_required: incompatible || crate::generations::reboot_required(toplevel),
+        reboot_required,
     })
 }
 
