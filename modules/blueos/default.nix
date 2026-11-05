@@ -36,6 +36,9 @@ let
         "include cors.conf;"
         "/home/pi/frontend"
         "/home/pi/tools/nginx/extensions"
+        # The version chooser service is gone: versions are NixOS generations
+        # now, served by blueos-updates.
+        "location /version-chooser/ {"
       ]
       [
         ""
@@ -45,6 +48,7 @@ let
         "include ${src}/core/tools/nginx/cors.conf;"
         "${blueos}/share/blueos-frontend"
         "/var/lib/blueos/nginx-extensions"
+        "location /updates/ {"
       ]
       (builtins.readFile "${src}/core/tools/nginx/nginx.conf");
 
@@ -140,6 +144,13 @@ in
         defaultText = lib.literalMD "this flake's package";
         description = "Generates the hardware uuid BlueOS reports.";
       };
+
+      updates = mkOption {
+        type = types.package;
+        default = pkgs.callPackage ../../packages/blueos-updates { };
+        defaultText = lib.literalMD "this flake's package";
+        description = "Update daemon, which lists and activates NixOS generations.";
+      };
     };
 
     mavlink = {
@@ -179,6 +190,29 @@ in
       type = types.str;
       default = "blueos";
       description = "Host name BlueOS advertises over mDNS.";
+    };
+
+    board = mkOption {
+      type = types.str;
+      default = "unknown";
+      example = "pi4";
+      description = ''
+        Board identifier, which selects the releases the update daemon offers.
+        It has to match the `board` field the release manifest publishes.
+      '';
+    };
+
+    updates = {
+      manifestUrl = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        example = "https://releases.example.com/blueos/manifest.json";
+        description = ''
+          Where the update daemon reads the list of published releases. Without
+          one, the vehicle can still switch between the generations already on
+          the card, but is told no remote versions exist.
+        '';
+      };
     };
 
     user = {

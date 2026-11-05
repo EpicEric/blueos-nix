@@ -111,6 +111,9 @@
             ./modules/blueos
             nixos-hardware.nixosModules."raspberry-pi-${board}"
             ./nixos/pi${board}
+            {
+              services.blueos.board = "pi${board}";
+            }
           ]
           ++ lib.optional cross (
             { pkgs, ... }:
@@ -141,6 +144,8 @@
           };
 
           ardupilot-tools = pkgs.callPackage ./packages/ardupilot-tools { };
+
+          blueos-updates = pkgs.callPackage ./packages/blueos-updates { };
 
           blueos-core = pkgs.callPackage ./packages/blueos-core {
             inherit

@@ -306,15 +306,18 @@ in
         serviceConfig.PrivateDevices = false;
       };
 
-      versionchooser = mkService {
-        name = "versionchooser";
-        exec = python "versionchooser" [ ];
-        serviceConfig.SupplementaryGroups = [
-          "docker"
-          "podman"
-        ];
+      blueos-updates = mkService {
+        name = "blueos-updates";
+        memoryMax = 250;
+        exec = "${cfg.packages.updates}/bin/blueos-updates";
+        environment = {
+          BLUEOS_BOARD = cfg.board;
+          BLUEOS_UPDATES_ADDR = "127.0.0.1:8081";
+        }
+        // lib.optionalAttrs (cfg.updates.manifestUrl != null) {
+          BLUEOS_UPDATES_MANIFEST = cfg.updates.manifestUrl;
+        };
       };
-
       log-zipper = mkService {
         name = "log_zipper";
         memoryMax = 250;
