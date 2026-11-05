@@ -194,7 +194,7 @@ in
 
     timeout = lib.mkOption {
       type = lib.types.str;
-      default = "15min";
+      default = "10min";
       example = "30min";
       description = ''
         How long a freshly activated generation has to confirm itself before it
