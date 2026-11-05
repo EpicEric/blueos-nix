@@ -8,7 +8,7 @@
   writableTmpDirAsHomeHook,
 }:
 let
-  inherit (blueos-source) version src rev;
+  inherit (blueos-source) version src rev date;
 
   # Submodules are not part of the GitHub archive; the revisions match the ones
   # the tag records in .gitmodules.
@@ -127,6 +127,11 @@ stdenvNoCC.mkDerivation {
     # dropped. The frontend is baked at build time, so this cannot be set at
     # runtime like the backend's GIT_DESCRIBE_TAGS.
     export VITE_APP_GIT_DESCRIBE="tags/${version}-0-g${builtins.substring 0 7 rev}"
+
+    # Pinned rather than read from the clock: this string ends up inside the
+    # bundle, so a wall-clock value would make every build a different store
+    # path and force a rebuild everywhere, cache included.
+    export VITE_BUILD_DATE="${date}"
 
     pushd core/frontend
     bun run build

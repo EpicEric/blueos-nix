@@ -3138,10 +3138,22 @@ index 78ed6cc781..026655648d 100644
  })
  </script>
 diff --git a/core/frontend/vite.config.js b/core/frontend/vite.config.js
-index 2514d554e0..a0a69da896 100644
+index 2514d554e0..5b8909b762 100644
 --- a/core/frontend/vite.config.js
 +++ b/core/frontend/vite.config.js
-@@ -331,16 +331,8 @@ onProxyRes: (proxyRes, request, response) => {
+@@ -8,7 +8,10 @@
+ const { name } = require('./package.json')
+ 
+ process.env.PROJECT_NAME = name
+-process.env.VITE_BUILD_DATE = new Date().toLocaleString()
++// A wall-clock default would make every build differ, defeating binary caching
++// for the whole bundle. A caller that needs a reproducible build sets its own
++// date; otherwise this is only a developer convenience.
++process.env.VITE_BUILD_DATE = process.env.VITE_BUILD_DATE ?? new Date().toLocaleString()
+ const DEFAULT_ADDRESS = 'http://blueos-avahi.local/'
+ const SERVER_ADDRESS = process.env.BLUEOS_ADDRESS ?? DEFAULT_ADDRESS
+ 
+@@ -331,16 +334,8 @@ onProxyRes: (proxyRes, request, response) => {
          '^/vehicles': {
            target: SERVER_ADDRESS,
          },

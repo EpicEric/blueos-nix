@@ -13,6 +13,12 @@ rec {
 
   channel = "stable";
 
+  # The pinned commit's date, in the format the frontend shows as "Build:".
+  # `VITE_BUILD_DATE` is baked into the bundle, so it has to be a fixed value:
+  # reading the wall clock makes every build a different store path, which
+  # defeats the binary cache. Update this whenever `rev` moves.
+  date = "2026-10-15";
+
   src = fetchFromGitHub {
     owner = "BlueRobotics";
     repo = "BlueOS";
