@@ -66,6 +66,10 @@
       # while cross-building it compiles systemd from source: cross-built
       # libraries are not in cache.nixos.org.
       crossPackages = removeAttrs (compiledPackages crossPkgs) [ "mavlink-router" ] // {
+        # The module names this option `updates`, so the key has to match it for
+        # a cross build to pick the cross-compiled daemon over the native one.
+        updates = crossPkgs.callPackage ./packages/blueos-updates { };
+
         mavlink-camera-manager = crossPkgs.callPackage ./packages/mavlink-camera-manager {
           pkgsNative = nixpkgs.legacyPackages.aarch64-linux;
         };
