@@ -119,6 +119,12 @@ pub(crate) fn current_toplevel() -> Option<PathBuf> {
     fs::canonicalize(CURRENT_SYSTEM).ok()
 }
 
+/// What the profile points at. It is the running system except between an
+/// activation that needs a reboot and the reboot itself.
+pub(crate) fn profile_toplevel() -> Option<PathBuf> {
+    fs::canonicalize(SYSTEM_PROFILE).ok()
+}
+
 pub(crate) fn known_good() -> Option<PathBuf> {
     fs::canonicalize(KNOWN_GOOD_ROOT).ok()
 }

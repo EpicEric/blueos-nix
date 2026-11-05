@@ -62,11 +62,18 @@ pub(crate) struct StatusResponse {
     /// The last generation that booted and passed its health check, which is
     /// what an automatic rollback would return to.
     known_good: Option<GenerationInfo>,
+    /// What the system profile points at, when that is not what is running. An
+    /// update installed with `boot` is in this state until the machine reboots.
+    installed: Option<GenerationInfo>,
     /// An activation that has not confirmed itself yet. While this is set, the
     /// rollback timer is running.
     pending: Option<PendingActivation>,
-    /// Whether the running system differs from what the machine booted.
+    /// Whether a reboot is what stands between `installed` and `current`.
     reboot_required: bool,
+    /// The generation that was running when an update failed and was rolled
+    /// back. It is what the UI shows to explain why the version changed on its
+    /// own; it stays set until the next activation.
+    rolled_back_from: Option<String>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -105,6 +112,8 @@ pub(crate) struct DownloadResponse {
 struct RollbackState {
     pending: Option<String>,
     mode: Option<String>,
+    #[serde(rename = "rolledBackFrom")]
+    rolled_back_from: Option<String>,
 }
 
 fn rollback_state() -> RollbackState {
@@ -144,9 +153,22 @@ fn current_generation() -> anyhow::Result<generations::Generation> {
 #[get("/status")]
 async fn status() -> Result<HttpResponse, ApiError> {
     let current = current_generation()?;
-    let reboot_required = generations::reboot_required(&current.toplevel);
 
     let known_good = generations::known_good()
+        .and_then(|toplevel| {
+            generations::all()
+                .ok()?
+                .into_iter()
+                .find(|generation| generation.toplevel == toplevel)
+        })
+        .map(|generation| generation.info());
+
+    // `nixos-rebuild boot` and the daemon's own `boot` mode move the profile
+    // without changing what runs, so the two only differ while a reboot is owed.
+    // A `switch` updates both, which is why comparing them is enough here: it
+    // does not need the kernel comparison that deciding to reboot does.
+    let installed = generations::profile_toplevel()
+        .filter(|toplevel| *toplevel != current.toplevel)
         .and_then(|toplevel| {
             generations::all()
                 .ok()?
@@ -162,10 +184,12 @@ async fn status() -> Result<HttpResponse, ApiError> {
     });
 
     Ok(HttpResponse::Ok().json(StatusResponse {
+        reboot_required: installed.is_some(),
+        installed,
         current: current.info(),
         known_good,
         pending,
-        reboot_required,
+        rolled_back_from: state.rolled_back_from,
     }))
 }
 
