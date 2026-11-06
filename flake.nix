@@ -124,6 +124,13 @@
             ./nix/nixos/pi${board}
             {
               services.blueos.board = "pi${board}";
+              # Where the image workflow publishes what it cached, so a device
+              # that boots this image can offer its own successors. Written out
+              # rather than derived: Nix evaluates this without knowing which
+              # repository it is being read from, which is also why a fork
+              # publishing its own builds has to override it.
+              # services.blueos.updates.manifestUrl =
+              #   "https://raw.githubusercontent.com/EpicEric/blueos-nix/manifest/manifest.json";
             }
           ]
           ++ lib.optional cross (
