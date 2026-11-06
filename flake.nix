@@ -114,7 +114,7 @@
           modules = [
             ./nix/modules/blueos
             nixos-hardware.nixosModules."raspberry-pi-${board}"
-            ./nixos/pi${board}
+            ./nix/nixos/pi${board}
             {
               services.blueos.board = "pi${board}";
             }
