@@ -161,12 +161,6 @@ in
       };
     };
 
-    hostname = mkOption {
-      type = types.str;
-      default = "blueos";
-      description = "Host name BlueOS advertises over mDNS.";
-    };
-
     board = mkOption {
       type = types.str;
       default = "unknown";
@@ -230,7 +224,7 @@ in
       dates = mkDefault "weekly";
     };
 
-    networking.hostName = mkDefault cfg.hostname;
+    networking.hostName = mkDefault "";
 
     # BlueOS extensions listen on ports of their own choosing, so a per-port
     # allowlist cannot work; the container image behaves the same way.
@@ -373,6 +367,7 @@ in
       "L /shortcuts/ardupilot_logs - - - - /root/.config/ardupilot-manager/logs"
       "L /shortcuts/extensions - - - - /usr/blueos/extensions"
       "L /shortcuts/system_logs - - - - /var/logs/blueos"
+      "f /etc/hostname 0644 root root - blueos"
     ];
 
     # nginx serves uploads and userdata from these two trees, and proxies
