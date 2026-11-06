@@ -51,12 +51,6 @@ let
         "location /updates/ {"
       ]
       (builtins.readFile "${src}/core/tools/nginx/nginx.conf");
-
-  defaultParamsFile = pkgs.writeText "ardupilot-navigator64-defaults.params" (
-    lib.concatStrings (
-      lib.mapAttrsToList (name: value: "${name} ${toString value}\n") cfg.ardupilot.defaultParams
-    )
-  );
 in
 {
   imports = [
@@ -165,25 +159,6 @@ in
         default = 194;
         description = "MAVLink component id for the onboard computer.";
       };
-    };
-
-    ardupilot.defaultParams = mkOption {
-      type = types.attrsOf (
-        types.oneOf [
-          types.int
-          types.float
-        ]
-      );
-      default = { };
-      example = {
-        BARO_EXT_BUS = 1;
-        BARO_PROBE_EXT = 1024;
-      };
-      description = ''
-        ArduPilot parameter defaults for the Navigator. They are passed to
-        ArduPilot with `--defaults`, so a parameter reset returns to these
-        values, while a value already stored on the device is kept.
-      '';
     };
 
     hostname = mkOption {
@@ -395,11 +370,7 @@ in
       "L /shortcuts/ardupilot_logs - - - - /root/.config/ardupilot-manager/logs"
       "L /shortcuts/extensions - - - - /usr/blueos/extensions"
       "L /shortcuts/system_logs - - - - /var/logs/blueos"
-    ]
-    ++
-      lib.optional (cfg.ardupilot.defaultParams != { })
-        # ardupilot_manager only adds --defaults when this exact file exists.
-        "L+ /usr/blueos/userdata/firmware/ardupilot_navigator64params.params - - - - ${defaultParamsFile}";
+    ];
 
     # nginx serves uploads and userdata from these two trees, and proxies
     # /docker/ to the socket.
