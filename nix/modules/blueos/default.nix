@@ -265,7 +265,10 @@ in
     # falls back to sshpass when the key does not exist yet.
     security.sudo.wheelNeedsPassword = mkDefault false;
 
-    nix.settings.trusted-users = [ cfg.user.name ];
+    nix.settings = {
+      experimental-features = [ "nix-command flakes" ];
+      trusted-users = [ cfg.user.name ];
+    };
 
     users.users.${cfg.user.name} = {
       isNormalUser = true;
