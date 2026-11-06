@@ -146,6 +146,23 @@
             }
           );
         };
+
+      # The QEMU configurations. Each is evaluated for the system it runs as, so
+      # an x86_64 host builds the x86_64 guest natively and an aarch64 one
+      # builds the aarch64 guest, which keeps a macOS host from emulating a
+      # foreign architecture it has no reason to.
+      mkBlueOSVM =
+        system:
+        lib.nixosSystem {
+          inherit system;
+          specialArgs = {
+            blueos = self.packages.${system}.blueos-core;
+            # Null for a dirty tree and for a plain path flake; version.nix
+            # reports that as "unknown" rather than failing the build.
+            blueosNixRev = self.rev or self.dirtyRev or null;
+          };
+          modules = [ ./nix/nixos/vm ];
+        };
     in
     {
       packages = forAllSystems (
@@ -214,6 +231,9 @@
           board = "5";
           cross = true;
         };
+
+        blueos-vm-x86_64-linux = mkBlueOSVM "x86_64-linux";
+        blueos-vm-aarch64-linux = mkBlueOSVM "aarch64-linux";
       };
     };
 }
