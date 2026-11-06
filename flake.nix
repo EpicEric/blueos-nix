@@ -43,21 +43,21 @@
 
       # The packages that compile native code, which is what makes a build slow.
       compiledPackages = pkgs: {
-        bridges = pkgs.callPackage ./packages/bridges { };
+        bridges = pkgs.callPackage ./nix/packages/bridges { };
 
-        linux2rest = pkgs.callPackage ./packages/linux2rest { };
+        linux2rest = pkgs.callPackage ./nix/packages/linux2rest { };
 
-        machineid-cli = pkgs.callPackage ./packages/machineid-cli { };
+        machineid-cli = pkgs.callPackage ./nix/packages/machineid-cli { };
 
-        mavlink-router = pkgs.callPackage ./packages/mavlink-router { };
+        mavlink-router = pkgs.callPackage ./nix/packages/mavlink-router { };
 
-        mavlink-server = pkgs.callPackage ./packages/mavlink-server { };
+        mavlink-server = pkgs.callPackage ./nix/packages/mavlink-server { };
 
-        mavlink2rest = pkgs.callPackage ./packages/mavlink2rest { };
+        mavlink2rest = pkgs.callPackage ./nix/packages/mavlink2rest { };
 
-        mavlink-camera-manager = pkgs.callPackage ./packages/mavlink-camera-manager { };
+        mavlink-camera-manager = pkgs.callPackage ./nix/packages/mavlink-camera-manager { };
 
-        mavp2p = pkgs.callPackage ./packages/mavp2p { };
+        mavp2p = pkgs.callPackage ./nix/packages/mavp2p { };
       };
 
       crossPkgs = nixpkgs.legacyPackages.x86_64-linux.pkgsCross.aarch64-multiplatform;
@@ -68,9 +68,9 @@
       crossPackages = removeAttrs (compiledPackages crossPkgs) [ "mavlink-router" ] // {
         # The module names this option `updates`, so the key has to match it for
         # a cross build to pick the cross-compiled daemon over the native one.
-        updates = crossPkgs.callPackage ./packages/blueos-updates { };
+        updates = crossPkgs.callPackage ./nix/packages/blueos-updates { };
 
-        mavlink-camera-manager = crossPkgs.callPackage ./packages/mavlink-camera-manager {
+        mavlink-camera-manager = crossPkgs.callPackage ./nix/packages/mavlink-camera-manager {
           pkgsNative = nixpkgs.legacyPackages.aarch64-linux;
         };
       };
@@ -104,9 +104,9 @@
             # runner builds it natively and an x86_64 one cross-compiles it.
             ubootPackage =
               if cross then
-                crossPkgs.callPackage ./packages/uboot-rpi { }
+                crossPkgs.callPackage ./nix/packages/uboot-rpi { }
               else
-                nixpkgs.legacyPackages.aarch64-linux.callPackage ./packages/uboot-rpi { };
+                nixpkgs.legacyPackages.aarch64-linux.callPackage ./nix/packages/uboot-rpi { };
             # Null for a dirty tree and for a plain path flake; version.nix
             # reports that as "unknown" rather than failing the build.
             blueosNixRev = self.rev or self.dirtyRev or null;
@@ -141,17 +141,17 @@
         in
         compiledPackages pkgs
         // {
-          blueos-source = pkgs.callPackage ./packages/blueos-source { };
+          blueos-source = pkgs.callPackage ./nix/packages/blueos-source { };
 
-          blueos-frontend = pkgs.callPackage ./packages/blueos-frontend {
+          blueos-frontend = pkgs.callPackage ./nix/packages/blueos-frontend {
             inherit (self.packages.${system}) blueos-source;
           };
 
-          ardupilot-tools = pkgs.callPackage ./packages/ardupilot-tools { };
+          ardupilot-tools = pkgs.callPackage ./nix/packages/ardupilot-tools { };
 
-          blueos-updates = pkgs.callPackage ./packages/blueos-updates { };
+          blueos-updates = pkgs.callPackage ./nix/packages/blueos-updates { };
 
-          blueos-core = pkgs.callPackage ./packages/blueos-core {
+          blueos-core = pkgs.callPackage ./nix/packages/blueos-core {
             inherit
               pyproject-nix
               uv2nix

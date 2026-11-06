@@ -78,70 +78,70 @@ in
     packages = {
       ardupilot-tools = mkOption {
         type = types.package;
-        default = pkgs.callPackage ../../packages/ardupilot-tools { };
+        default = pkgs.callPackage ../../nix/packages/ardupilot-tools { };
         defaultText = lib.literalMD "this flake's package";
         description = "ArduPilot firmware uploader, apj_tool and decoder.";
       };
 
       bridges = mkOption {
         type = types.package;
-        default = pkgs.callPackage ../../packages/bridges { };
+        default = pkgs.callPackage ../../nix/packages/bridges { };
         defaultText = lib.literalMD "this flake's package";
         description = "Serial to UDP bridge, used by bridget and ping.";
       };
 
       mavlink-router = mkOption {
         type = types.package;
-        default = pkgs.callPackage ../../packages/mavlink-router { };
+        default = pkgs.callPackage ../../nix/packages/mavlink-router { };
         defaultText = lib.literalMD "this flake's package";
         description = "MAVLink router, one of the routers ardupilot_manager can drive.";
       };
 
       mavlink-server = mkOption {
         type = types.package;
-        default = pkgs.callPackage ../../packages/mavlink-server { };
+        default = pkgs.callPackage ../../nix/packages/mavlink-server { };
         defaultText = lib.literalMD "this flake's package";
         description = "MAVLink server, one of the routers ardupilot_manager can drive.";
       };
 
       mavp2p = mkOption {
         type = types.package;
-        default = pkgs.callPackage ../../packages/mavp2p { };
+        default = pkgs.callPackage ../../nix/packages/mavp2p { };
         defaultText = lib.literalMD "this flake's package";
         description = "MAVLink point-to-point router.";
       };
 
       mavlink2rest = mkOption {
         type = types.package;
-        default = pkgs.callPackage ../../packages/mavlink2rest { };
+        default = pkgs.callPackage ../../nix/packages/mavlink2rest { };
         defaultText = lib.literalMD "this flake's package";
         description = "MAVLink over REST and websockets.";
       };
 
       linux2rest = mkOption {
         type = types.package;
-        default = pkgs.callPackage ../../packages/linux2rest { };
+        default = pkgs.callPackage ../../nix/packages/linux2rest { };
         defaultText = lib.literalMD "this flake's package";
         description = "Exposes host information as JSON over HTTP.";
       };
 
       mavlink-camera-manager = mkOption {
         type = types.package;
-        default = pkgs.callPackage ../../packages/mavlink-camera-manager { };
+        default = pkgs.callPackage ../../nix/packages/mavlink-camera-manager { };
         defaultText = lib.literalMD "this flake's package";
         description = "Camera streaming service.";
       };
 
       machineid-cli = mkOption {
         type = types.package;
-        default = pkgs.callPackage ../../packages/machineid-cli { };
+        default = pkgs.callPackage ../../nix/packages/machineid-cli { };
         defaultText = lib.literalMD "this flake's package";
         description = "Generates the hardware uuid BlueOS reports.";
       };
 
       updates = mkOption {
         type = types.package;
-        default = pkgs.callPackage ../../packages/blueos-updates { };
+        default = pkgs.callPackage ../../nix/packages/blueos-updates { };
         defaultText = lib.literalMD "this flake's package";
         description = "Update daemon, which lists and activates NixOS generations.";
       };
