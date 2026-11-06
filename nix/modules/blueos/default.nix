@@ -365,6 +365,9 @@ in
       "d /etc/filebrowser 0755 root root -"
       "d /shortcuts 0755 root root -"
       "d /root/blueos-files 0755 root root -"
+      # commander's setup_ssh() writes the manager's key here without creating
+      # the directory, so it fails on every boot if this is missing.
+      "d /home/${cfg.user.name}/.ssh 0700 ${cfg.user.name} users -"
       "d /root/.config/ardupilot-manager/logs 0755 root root -"
       "L /shortcuts/userdata - - - - /usr/blueos/userdata"
       "L /shortcuts/ardupilot_logs - - - - /root/.config/ardupilot-manager/logs"

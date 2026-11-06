@@ -36,6 +36,7 @@ let
     name = "BlueOS-${version}-patched";
     src = blueos-source.src;
     patches = [
+      ./ardupilot-manager-kill-fallback.patch
       ./cable-guy-dhcpcd.patch
       ./helper-nginx-paths.patch
       ./kraken-podman-pull.patch
