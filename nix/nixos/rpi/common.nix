@@ -56,6 +56,11 @@ in
     firmwareSize = mkDefault 512;
   };
 
+  # The default name is derived from system.nixos.label, which is the same for
+  # every board: both images would be called the same and only one would survive
+  # the upload to a release. The board is what tells them apart.
+  image.baseName = mkDefault "blueos-${config.services.blueos.board}-${config.services.blueos.gitDescribe}";
+
   # The base profile pulls in every filesystem and its repair tools, and zfs
   # alone drags a Python in. A BlueOS device only needs these two.
   boot.supportedFilesystems = mkForce [
