@@ -244,13 +244,13 @@ in
     # allowlist cannot work; the container image behaves the same way.
     networking.firewall.enable = mkDefault false;
 
-    # cable_guy drives eth0 and usb0 itself over pyroute2, but needs
+    # cable_guy drives usb0 itself over pyroute2, but needs
     # NetworkManager on D-Bus to pick its handler.
     networking.networkmanager = {
       enable = mkDefault true;
       unmanaged = [
-        "interface:eth0"
-        "interface:usb0"
+        "interface-name:usb0"
+        "interface-name:uap0"
       ];
     };
     # ModemManager claims the autopilot's serial ports. NetworkManager's module
@@ -347,6 +347,7 @@ in
       openssh
       dhcpcd
       dnsmasq
+      linux-wifi-hotspot
       iw
       ifmetric
       iproute2
