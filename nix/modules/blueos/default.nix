@@ -198,6 +198,20 @@ in
       };
     };
 
+    cache = {
+      host = mkOption {
+        type = types.str;
+        default = "https://cache.eric.dev.br";
+        description = "Trusted Nix binary cache to use for BlueOS updates.";
+      };
+
+      publicKey = mkOption {
+        type = types.str;
+        default = "cache.eric.dev.br-1:szEyq5LCjxDCUHYSRaSFU5HdHmR7QlT+FRG3tB9QtpE=";
+        description = "Public key for the trusted Nix binary cache.";
+      };
+    };
+
     raspberryPi = {
       enable = mkOption {
         type = types.bool;
@@ -268,6 +282,8 @@ in
     nix.settings = {
       experimental-features = [ "nix-command flakes" ];
       trusted-users = [ cfg.user.name ];
+      extra-substituters = [ cfg.cache.host ];
+      extra-trusted-public-keys = [ cfg.cache.publicKey ];
     };
 
     users.users.${cfg.user.name} = {

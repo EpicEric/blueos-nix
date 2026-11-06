@@ -1,6 +1,13 @@
 {
   description = "Packages used by BlueOS";
 
+  nixConfig = {
+    extra-substituters = [ "https://cache.eric.dev.br" ];
+    extra-trusted-public-keys = [
+      "cache.eric.dev.br-1:szEyq5LCjxDCUHYSRaSFU5HdHmR7QlT+FRG3tB9QtpE="
+    ];
+  };
+
   inputs = {
     nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.zst";
     nixos-hardware = {
