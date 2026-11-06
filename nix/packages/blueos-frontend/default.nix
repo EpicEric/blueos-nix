@@ -133,6 +133,11 @@ stdenvNoCC.mkDerivation {
     # path and force a rebuild everywhere, cache included.
     export VITE_BUILD_DATE="${date}"
 
+    # Selects the generation-based version chooser. BlueOS detects available
+    # versions differently under NixOS, so the frontend ships both and this
+    # picks one at build time.
+    export VITE_BLUEOS_UPDATES=nixos
+
     pushd core/frontend
     bun run build
     popd
