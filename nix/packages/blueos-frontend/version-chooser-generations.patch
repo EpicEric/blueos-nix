@@ -625,8 +625,8 @@ index 0000000000..09f2bf7df4
 +          Rollback target
 +        </v-alert>
 +        <v-btn
-+          v-if="!generation.current"
-+          color="primary"
++          v-if="!generation.current && settings.is_pirate_mode"
++          color="secondary"
 +          class="mx-2 my-1"
 +          :disabled="working"
 +          :loading="working && activating"
@@ -634,16 +634,17 @@ index 0000000000..09f2bf7df4
 +          v-text="'Switch to'"
 +        />
 +        <v-btn
-+          v-if="!generation.current && settings.is_pirate_mode"
++          v-if="!generation.current"
 +          v-tooltip="'Install it and reboot into it'"
++          color="primary"
 +          class="mx-2 my-1"
-+          text
 +          :disabled="working"
++          :loading="working && activating"
 +          @click="$emit('activate', 'boot')"
 +          v-text="'Boot into'"
 +        />
 +        <v-btn
-+          v-if="canDelete && settings.is_pirate_mode"
++          v-if="canDelete"
 +          color="error"
 +          class="mx-2 my-1"
 +          :disabled="working"
