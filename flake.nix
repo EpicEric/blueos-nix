@@ -129,8 +129,8 @@
               # rather than derived: Nix evaluates this without knowing which
               # repository it is being read from, which is also why a fork
               # publishing its own builds has to override it.
-              # services.blueos.updates.manifestUrl =
-              #   "https://raw.githubusercontent.com/EpicEric/blueos-nix/manifest/manifest.json";
+              services.blueos.updates.manifestUrl =
+                "https://epiceric.github.io/blueos-nix/manifest.json";
             }
           ]
           ++ lib.optional cross (

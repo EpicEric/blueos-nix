@@ -120,10 +120,10 @@ jobs:
         with:
           files: image/sd-image/*.img.zst
 
-  # Devices hold no credentials, so the manifest is a plain file on a branch
-  # they can fetch anonymously. The entry is derived from the closure itself,
-  # which means the branch is a record of what was built rather than a second
-  # place where a version has to be kept in agreement with one.
+  # Devices hold no credentials, so the manifest is published to GitHub Pages,
+  # which serves it anonymously. The entry is derived from the closure itself,
+  # which means the published file is a record of what was built rather than a
+  # second place where a version has to be kept in agreement with one.
   publish:
     name: Publish the release manifest
     needs: image
@@ -145,7 +145,7 @@ jobs:
           pattern: release-*
           path: ${{ runner.temp }}/releases
 
-      - name: Merge into the manifest branch
+      - name: Merge into the published manifest
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -163,12 +163,12 @@ jobs:
           git init --quiet "$work"
           git -C "$work" remote add origin \
             "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          if git -C "$work" fetch --quiet --depth=1 origin manifest 2>/dev/null; then
-            git -C "$work" checkout --quiet -B manifest FETCH_HEAD
+          if git -C "$work" fetch --quiet --depth=1 origin gh-pages 2>/dev/null; then
+            git -C "$work" checkout --quiet -B gh-pages FETCH_HEAD
           else
             # First publish. An orphan branch keeps this history free of the
             # source tree, since the file is the only thing the branch holds.
-            git -C "$work" checkout --quiet --orphan manifest
+            git -C "$work" checkout --quiet --orphan gh-pages
           fi
 
           manifest="$work/manifest.json"
@@ -203,12 +203,21 @@ jobs:
           ' > "$manifest"
           cat "$manifest"
 
+          # GitHub Pages serves index.html at the site root, so a bare
+          # /manifest.json would 404 even though the file is there.
+          cat > "$work/index.html" <<'HTML'
+          <!doctype html>
+          <meta charset="utf-8">
+          <title>blueos-nix releases</title>
+          <p>Release manifest: <a href="manifest.json">manifest.json</a></p>
+          HTML
+
           git -C "$work" config user.name "github-actions[bot]"
           git -C "$work" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git -C "$work" add manifest.json
+          git -C "$work" add manifest.json index.html
           if git -C "$work" diff --cached --quiet; then
             echo "The manifest already lists these builds."
             exit 0
           fi
           git -C "$work" commit --quiet --message "Publish ${GITHUB_REF_NAME}"
-          git -C "$work" push --quiet origin manifest
+          git -C "$work" push --quiet origin gh-pages
