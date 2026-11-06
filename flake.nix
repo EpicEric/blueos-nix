@@ -121,7 +121,7 @@
           modules = [
             ./nix/modules/blueos
             nixos-hardware.nixosModules."raspberry-pi-${board}"
-            ./nix/nixos/pi${board}
+            ./nix/nixos/rpi/pi${board}
             {
               services.blueos.board = "pi${board}";
               # Where the image workflow publishes what it cached, so a device
