@@ -1,4 +1,4 @@
-name: Image
+name: Build RPi images with Nix
 
 on:
   push:
@@ -72,7 +72,7 @@ jobs:
           echo ${{ secrets.NIKS3_AUTH_TOKEN }} > $NIKS3_AUTH_TOKEN_FILE
           niks3 push "$(cat "$RUNNER_TEMP/toplevel")"
 
-      - name: Build the image
+      - name: Build the SD card image
         run: |
           nix build .#nixosConfigurations.blueos-${{ matrix.board }}.config.system.build.sdImage \
             --out-link image
