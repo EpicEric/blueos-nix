@@ -112,7 +112,7 @@
             blueosNixRev = self.rev or self.dirtyRev or null;
           };
           modules = [
-            ./modules/blueos
+            ./nix/modules/blueos
             nixos-hardware.nixosModules."raspberry-pi-${board}"
             ./nixos/pi${board}
             {
@@ -181,7 +181,7 @@
         blueos =
           { pkgs, ... }:
           {
-            imports = [ ./modules/blueos ];
+            imports = [ ./nix/modules/blueos ];
 
             services.blueos.package = self.packages.${pkgs.stdenv.hostPlatform.system}.blueos-core;
           };
