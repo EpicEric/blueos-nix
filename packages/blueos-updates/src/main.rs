@@ -252,7 +252,8 @@ async fn activate_generation(
     let target = generations::find(number)
         .ok_or_else(|| ApiError::not_found(format!("there is no generation {number}")))?;
 
-    let outcome = apply::activate(&target.toplevel, params.mode.as_str()).await?;
+    let selection = apply::Selection::Generation(number);
+    let outcome = apply::activate(&target.toplevel, selection, params.mode.as_str()).await?;
 
     Ok(HttpResponse::Accepted().json(ActivationResponse {
         toplevel: outcome.toplevel,
@@ -277,7 +278,7 @@ async fn activate_generation(
 #[post("/restart")]
 async fn restart() -> Result<HttpResponse, ApiError> {
     let current = current_generation()?;
-    let outcome = apply::activate(&current.toplevel, "switch").await?;
+    let outcome = apply::activate(&current.toplevel, apply::Selection::Store, "switch").await?;
 
     Ok(HttpResponse::Accepted().json(ActivationResponse {
         toplevel: outcome.toplevel,
@@ -367,7 +368,12 @@ async fn activate_release(
     // downloaded build becomes a generation. Realising first means a closure
     // that is not in the cache fails before the profile moves.
     apply::realise(&target.toplevel).await?;
-    let outcome = apply::activate(Path::new(&target.toplevel), params.mode.as_str()).await?;
+    let outcome = apply::activate(
+        Path::new(&target.toplevel),
+        apply::Selection::Store,
+        params.mode.as_str(),
+    )
+    .await?;
 
     Ok(HttpResponse::Accepted().json(ActivationResponse {
         toplevel: outcome.toplevel,

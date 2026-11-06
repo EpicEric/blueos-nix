@@ -23,6 +23,19 @@ pub(crate) struct Activation {
     pub(crate) log: String,
 }
 
+/// Which profile link the switch starts from.
+///
+/// `nix-env --set` appends a generation whenever the store path differs from
+/// the profile's current target, so pointing the profile at a build that is
+/// already there duplicates it. Going back to an installed version is the
+/// common case for a vehicle, so it switches the existing link instead.
+pub(crate) enum Selection {
+    /// A generation link that already exists, reused rather than duplicated.
+    Generation(u32),
+    /// A store path with no generation link yet, which gains one.
+    Store,
+}
+
 /// Point the system profile at `toplevel` and start activating it.
 ///
 /// The order is the one nixos-rebuild uses: set the profile, then let the
@@ -36,20 +49,30 @@ pub(crate) struct Activation {
 /// caller gets `Activation` as soon as the switch is queued and follows the
 /// outcome through the status endpoint, which reports the pending activation
 /// the rollback machinery records.
-pub(crate) async fn activate(toplevel: &Path, mode: &str) -> anyhow::Result<Activation> {
+pub(crate) async fn activate(
+    toplevel: &Path,
+    selection: Selection,
+    mode: &str,
+) -> anyhow::Result<Activation> {
+    let (argument, value) = match selection {
+        Selection::Generation(number) => ("--switch-generation", number.to_string()),
+        Selection::Store => ("--set", toplevel.to_string_lossy().into_owned()),
+    };
+
     let (status, stderr) = run(
         Command::new("nix-env").args([
             "--profile",
             crate::generations::SYSTEM_PROFILE,
-            "--set",
-            &toplevel.to_string_lossy(),
+            argument,
+            &value,
         ]),
         "nix-env",
     )
     .await?;
     if !status.success() {
         bail!(
-            "nix-env could not set the system profile: {}",
+            "nix-env could not point the system profile at {}: {}",
+            toplevel.display(),
             detail(&stderr)
         );
     }
