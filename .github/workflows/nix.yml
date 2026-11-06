@@ -72,6 +72,37 @@ jobs:
           echo ${{ secrets.NIKS3_AUTH_TOKEN }} > $NIKS3_AUTH_TOKEN_FILE
           niks3 push "$(cat "$RUNNER_TEMP/toplevel")"
 
+      # The manifest names store paths, so it may only be written once the
+      # closure they belong to is in the cache. Running after the push step
+      # makes a failed push fail the job before anything is advertised.
+      - name: Collect the release metadata
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          toplevel="$(cat "$RUNNER_TEMP/toplevel")"
+          case "$toplevel" in
+            /nix/store/*) ;;
+            *) echo "'$toplevel' is not a store path." >&2; exit 1 ;;
+          esac
+
+          # Read from the option rather than the matrix, because this is the
+          # value the daemon filters releases by. Selecting the fields instead
+          # of copying the file keeps anything else the closure records out of
+          # the published contract.
+          board="$(nix eval --raw \
+            ".#nixosConfigurations.blueos-${{ matrix.board }}.config.services.blueos.board")"
+          jq --arg board "$board" --arg toplevel "$toplevel" \
+            '{board: $board, channel, version, revision, toplevel: $toplevel}' \
+            "$toplevel/etc/blueos/release.json" > "$RUNNER_TEMP/release.json"
+          cat "$RUNNER_TEMP/release.json"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          name: release-${{ matrix.board }}
+          path: ${{ runner.temp }}/release.json
+          if-no-files-found: error
+          retention-days: 1
+
       - name: Build the SD card image
         run: |
           nix build .#nixosConfigurations.blueos-${{ matrix.board }}.config.system.build.sdImage \
@@ -88,3 +119,96 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: image/sd-image/*.img.zst
+
+  # Devices hold no credentials, so the manifest is a plain file on a branch
+  # they can fetch anonymously. The entry is derived from the closure itself,
+  # which means the branch is a record of what was built rather than a second
+  # place where a version has to be kept in agreement with one.
+  publish:
+    name: Publish the release manifest
+    needs: image
+    # Only tags are advertised. A build of main carries the version pinned in
+    # blueos-source, so publishing it would replace the tagged build of that
+    # same version with one no release describes.
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
+    # The group above is keyed per ref, so two tags pushed together are two
+    # concurrent runs and would otherwise interleave this read-modify-write.
+    concurrency:
+      group: manifest-publish
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          pattern: release-*
+          path: ${{ runner.temp }}/releases
+
+      - name: Merge into the manifest branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          shopt -s nullglob
+          sources=("$RUNNER_TEMP"/releases/*/release.json)
+          shopt -u nullglob
+          if [ "${#sources[@]}" -eq 0 ]; then
+            echo "No release metadata was produced." >&2
+            exit 1
+          fi
+
+          work="$RUNNER_TEMP/manifest"
+          git init --quiet "$work"
+          git -C "$work" remote add origin \
+            "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git -C "$work" fetch --quiet --depth=1 origin manifest 2>/dev/null; then
+            git -C "$work" checkout --quiet -B manifest FETCH_HEAD
+          else
+            # First publish. An orphan branch keeps this history free of the
+            # source tree, since the file is the only thing the branch holds.
+            git -C "$work" checkout --quiet --orphan manifest
+          fi
+
+          manifest="$work/manifest.json"
+          previous='[]'
+          if [ -f "$manifest" ]; then
+            previous="$(jq -c '.releases // []' "$manifest")"
+          fi
+
+          # A re-run of an old tag is a rebuild of that version, so it takes the
+          # place of the entry it replaces rather than appearing beside it. When
+          # the build is byte-for-byte the one already listed, its original
+          # `published` is kept so re-running a tag changes nothing.
+          published="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          entries="$(jq -s -c --arg published "$published" \
+            'map(. + {published: $published})' "${sources[@]}")"
+
+          jq -S -n --argjson previous "$previous" --argjson entries "$entries" '
+            ($previous + $entries)
+            | group_by([.board, .version])
+            | map(
+                max_by(.published // "") as $newest
+                | ($previous
+                   | map(select(.board == $newest.board
+                                and .version == $newest.version
+                                and .toplevel == $newest.toplevel))
+                   | first) as $existing
+                | if $existing then $existing else $newest end
+              )
+            | sort_by(.published // "")
+            | reverse
+            | {releases: .}
+          ' > "$manifest"
+          cat "$manifest"
+
+          git -C "$work" config user.name "github-actions[bot]"
+          git -C "$work" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$work" add manifest.json
+          if git -C "$work" diff --cached --quiet; then
+            echo "The manifest already lists these builds."
+            exit 0
+          fi
+          git -C "$work" commit --quiet --message "Publish ${GITHUB_REF_NAME}"
+          git -C "$work" push --quiet origin manifest
