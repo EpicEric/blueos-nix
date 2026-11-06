@@ -552,7 +552,7 @@ new file mode 100644
 index 0000000000..09f2bf7df4
 --- /dev/null
 +++ b/core/frontend/src/components/version-chooser/GenerationCard.vue
-@@ -0,0 +1,197 @@
+@@ -0,0 +1,198 @@
 +<template>
 +  <v-sheet
 +    class="my-4 pa-4 py-sm-0"
