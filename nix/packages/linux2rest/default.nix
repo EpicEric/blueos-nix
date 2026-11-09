@@ -8,7 +8,7 @@
   udev,
 }:
 let
-  version = "0.6.5";
+  version = "0.9.5";
 
   # build.rs downloads Vue at build time, which the sandbox forbids; the patch
   # drops the download and the file is supplied from a fixed-output fetch instead.
@@ -25,16 +25,10 @@ rustPlatform.buildRustPackage {
     owner = "patrickelectric";
     repo = "linux2rest";
     tag = "v${version}";
-    hash = "sha256-89hbNFCFflsylHjYMPs+auQazpTdQxSG0qaMV7uSVQ0=";
+    hash = "sha256-D2N7pyQEgqsZuaoMpqJSXJv2eiqZ7wuCgvWVV5BiqC8=";
   };
 
-  cargoLock = {
-    lockFile = ./Cargo.lock;
-    outputHashes = {
-      "tracing-appender-0.2.2-with-filename-suffix" =
-        "sha256-fUau1OWoiUI9ip8dS8JGt7iqTcGBEk7DQzLwUmJJJBU=";
-    };
-  };
+  cargoHash = "sha256-stWFmQK9Wg3B1ZBp/JpIJHexoPUiv6e8hZY6jj3SkGU=";
 
   nativeBuildInputs = [ pkg-config ];
 
