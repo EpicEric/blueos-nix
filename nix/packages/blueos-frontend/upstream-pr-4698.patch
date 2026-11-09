@@ -7,8 +7,14 @@
 # than rebased from blueos-nix's own 3,170-line version because the upstream
 # form is what will be maintained.
 #
-# Base: bd007e5788498fe7ad9a451f83700df150e8f389 (PR head, applies to
-# e5cd9aae cleanly). Delete once merged.
+# Base: 73efc64027df4209e384f81638be922ab1bf7754, the PR head. The PR is 13
+# commits on top of the pinned rev, and this is that whole range as one diff,
+# so it applies to the pin and needs no intermediate patches. It includes the
+# ttag imports the PR's new components were missing, which made the chooser
+# render an empty page.
+#
+# Delete once merged. Any change to the PR means regenerating this file:
+#   git -C <BlueOS> diff <pinned-rev> <PR-head>
 diff --git a/core/frontend/src/App.vue b/core/frontend/src/App.vue
 index bfc3000113..dd81782a22 100644
 --- a/core/frontend/src/App.vue
@@ -257,10 +263,10 @@ index 0000000000..3aef82970d
 +</script>
 diff --git a/core/frontend/src/components/version-chooser/GenerationCard.vue b/core/frontend/src/components/version-chooser/GenerationCard.vue
 new file mode 100644
-index 0000000000..aef30f1ac3
+index 0000000000..a5a4e768bf
 --- /dev/null
 +++ b/core/frontend/src/components/version-chooser/GenerationCard.vue
-@@ -0,0 +1,201 @@
+@@ -0,0 +1,202 @@
 +<template>
 +  <v-sheet
 +    class="my-4 pa-4 py-sm-0"
@@ -381,6 +387,7 @@ index 0000000000..aef30f1ac3
 +
 +<script lang="ts">
 +import { formatDistanceToNow } from 'date-fns'
++import { t } from 'ttag'
 +import Vue, { PropType } from 'vue'
 +
 +import settings from '@/libs/settings'
@@ -464,10 +471,10 @@ index 0000000000..aef30f1ac3
 +</script>
 diff --git a/core/frontend/src/components/version-chooser/ReleaseCard.vue b/core/frontend/src/components/version-chooser/ReleaseCard.vue
 new file mode 100644
-index 0000000000..58ff8c5d7b
+index 0000000000..654154a014
 --- /dev/null
 +++ b/core/frontend/src/components/version-chooser/ReleaseCard.vue
-@@ -0,0 +1,196 @@
+@@ -0,0 +1,197 @@
 +<template>
 +  <v-sheet
 +    class="my-4 pa-4 py-sm-0"
@@ -579,6 +586,7 @@ index 0000000000..58ff8c5d7b
 +
 +<script lang="ts">
 +import { formatDistanceToNow } from 'date-fns'
++import { t } from 'ttag'
 +import Vue, { PropType } from 'vue'
 +
 +import settings from '@/libs/settings'
@@ -737,10 +745,10 @@ index 0000000000..18f6cb44df
 +</style>
 diff --git a/core/frontend/src/components/version-chooser/VersionChooserNixos.vue b/core/frontend/src/components/version-chooser/VersionChooserNixos.vue
 new file mode 100644
-index 0000000000..d78943f41d
+index 0000000000..a48d286c3b
 --- /dev/null
 +++ b/core/frontend/src/components/version-chooser/VersionChooserNixos.vue
-@@ -0,0 +1,554 @@
+@@ -0,0 +1,555 @@
 +<template>
 +  <v-container>
 +    <v-col
@@ -973,6 +981,7 @@ index 0000000000..d78943f41d
 +</template>
 +
 +<script lang="ts">
++import { t } from 'ttag'
 +import Vue from 'vue'
 +
 +import Notifier from '@/libs/notifier'
@@ -1296,7 +1305,7 @@ index 0000000000..d78943f41d
 +})
 +</script>
 diff --git a/core/frontend/src/i18n/en.po b/core/frontend/src/i18n/en.po
-index 2a1a3b099b..af3ce786ba 100644
+index a3f393160e..7dc68cd758 100644
 --- a/core/frontend/src/i18n/en.po
 +++ b/core/frontend/src/i18n/en.po
 @@ -44,6 +44,13 @@ msgstr ""
@@ -1355,7 +1364,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/system-information/Firmware.vue
  msgid "Bootloader Version"
  msgstr ""
-@@ -940,6 +961,30 @@ msgstr ""
+@@ -944,6 +965,30 @@ msgstr ""
  msgid "Core container is restarting, please wait."
  msgstr ""
  
@@ -1386,7 +1395,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/bridges/BridgeCreationDialog.vue
  #: src/components/ethernet/AddressCreationDialog.vue
  #: src/components/kraken/modals/ExtensionCreationModal.vue
-@@ -983,6 +1028,7 @@ msgid "Current Pin:"
+@@ -987,6 +1032,7 @@ msgid "Current Pin:"
  msgstr ""
  
  #: src/components/version-chooser/VersionChooser.vue
@@ -1394,7 +1403,7 @@ index 2a1a3b099b..af3ce786ba 100644
  msgid "Current Version"
  msgstr ""
  
-@@ -1050,7 +1096,9 @@ msgstr ""
+@@ -1054,7 +1100,9 @@ msgstr ""
  msgid "Decompressing file, this usually takes up to one minute, please stand by..."
  msgstr ""
  
@@ -1404,7 +1413,7 @@ index 2a1a3b099b..af3ce786ba 100644
  msgid "Delete"
  msgstr ""
  
-@@ -1062,6 +1110,10 @@ msgstr ""
+@@ -1066,6 +1114,10 @@ msgstr ""
  msgid "Delete selected logs"
  msgstr ""
  
@@ -1415,7 +1424,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/views/SettingsView.vue
  msgid "Deleting:"
  msgstr ""
-@@ -1197,6 +1249,8 @@ msgstr ""
+@@ -1201,6 +1253,8 @@ msgstr ""
  msgid "Docker Login"
  msgstr ""
  
@@ -1424,7 +1433,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/version-chooser/VersionCard.vue
  msgid "Documentation for this version"
  msgstr ""
-@@ -1221,6 +1275,10 @@ msgstr ""
+@@ -1225,6 +1279,10 @@ msgstr ""
  msgid "Download and Apply"
  msgstr ""
  
@@ -1435,7 +1444,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/logs/LogManager.vue
  msgid "Download log"
  msgstr ""
-@@ -1229,6 +1287,10 @@ msgstr ""
+@@ -1233,6 +1291,10 @@ msgstr ""
  msgid "Download logs for all BlueOS services"
  msgstr ""
  
@@ -1446,7 +1455,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/logs/LogManager.vue
  msgid "Download selected logs"
  msgstr ""
-@@ -1241,6 +1303,14 @@ msgstr ""
+@@ -1245,6 +1307,14 @@ msgstr ""
  msgid "Download speed from vehicle"
  msgstr ""
  
@@ -1461,7 +1470,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/utils/PullProgress.vue
  #, javascript-format
  msgid "Downloading: ${ 0 }%"
-@@ -1375,6 +1445,13 @@ msgstr ""
+@@ -1379,6 +1449,13 @@ msgstr ""
  msgid "Event log"
  msgstr ""
  
@@ -1475,7 +1484,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/system-information/Processes.vue
  msgid "Executable path"
  msgstr ""
-@@ -1591,6 +1668,10 @@ msgstr ""
+@@ -1595,6 +1672,10 @@ msgstr ""
  msgid "GPIO Function:"
  msgstr ""
  
@@ -1486,7 +1495,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/vehiclesetup/configuration/compass/AutoCoordinateDetector.vue
  msgid "GeoIP coordinates are estimated based on your IP address."
  msgstr ""
-@@ -1635,6 +1716,8 @@ msgstr ""
+@@ -1639,6 +1720,8 @@ msgstr ""
  msgid "Hide"
  msgstr ""
  
@@ -1495,7 +1504,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/version-chooser/VersionCard.vue
  msgid "Hide release notes"
  msgstr ""
-@@ -1789,6 +1872,10 @@ msgstr ""
+@@ -1793,6 +1876,10 @@ msgstr ""
  msgid "Install from file"
  msgstr ""
  
@@ -1506,7 +1515,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/wizard/Wizard.vue
  msgid "Install scripts"
  msgstr ""
-@@ -1805,6 +1892,14 @@ msgstr ""
+@@ -1809,6 +1896,14 @@ msgstr ""
  msgid "Installed"
  msgstr ""
  
@@ -1521,7 +1530,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/autopilot/FirmwareManager.vue
  msgid "Installing firmware. Please wait."
  msgstr ""
-@@ -2169,6 +2264,14 @@ msgstr ""
+@@ -2177,6 +2272,14 @@ msgstr ""
  msgid "Modified"
  msgstr ""
  
@@ -1536,7 +1545,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/vehiclesetup/PwmSetup.vue
  msgid "Motor Test"
  msgstr ""
-@@ -2857,6 +2960,7 @@ msgstr ""
+@@ -2865,6 +2968,7 @@ msgstr ""
  
  #: src/components/app/PowerMenu.vue
  #: src/components/autopilot/FirmwareManager.vue
@@ -1544,7 +1553,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/views/SettingsView.vue
  msgid "Reboot"
  msgstr ""
-@@ -2900,6 +3004,7 @@ msgid "Relay On"
+@@ -2908,6 +3012,7 @@ msgid "Relay On"
  msgstr ""
  
  #: src/components/version-chooser/ReleaseNotes.vue
@@ -1552,7 +1561,7 @@ index 2a1a3b099b..af3ce786ba 100644
  msgid "Release notes are not available for this version."
  msgstr ""
  
-@@ -3027,6 +3132,7 @@ msgid "Retrieve from Cloud"
+@@ -3035,6 +3140,7 @@ msgid "Retrieve from Cloud"
  msgstr ""
  
  #: src/components/version-chooser/VersionChooser.vue
@@ -1560,7 +1569,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/wizard/Wizard.vue
  msgid "Retry"
  msgstr ""
-@@ -3053,6 +3159,10 @@ msgstr ""
+@@ -3061,6 +3167,10 @@ msgstr ""
  msgid "Roll: ${ 0 }°"
  msgstr ""
  
@@ -1571,7 +1580,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/system-information/Processes.vue
  msgid "Root directory"
  msgstr ""
-@@ -3066,6 +3176,7 @@ msgstr ""
+@@ -3074,6 +3184,7 @@ msgstr ""
  msgid "Run Wizard"
  msgstr ""
  
@@ -1579,7 +1588,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/version-chooser/VersionCard.vue
  msgid "Running"
  msgstr ""
-@@ -3532,11 +3643,19 @@ msgstr ""
+@@ -3540,11 +3651,19 @@ msgstr ""
  msgid "Successfully updated smart-hotspot configuration."
  msgstr ""
  
@@ -1599,7 +1608,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/views/SettingsView.vue
  msgid "System"
  msgstr ""
-@@ -3632,6 +3751,10 @@ msgid ""
+@@ -3640,6 +3759,10 @@ msgid ""
  "is currently ${ 1 }. Reboot the autopilot after changing the parameter."
  msgstr ""
  
@@ -1610,7 +1619,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/vehiclesetup/configuration/compass/ArdupilotMavlinkCompassSetup.vue
  msgid "The compass is not calibrated - please calibrate it."
  msgstr ""
-@@ -3643,10 +3766,38 @@ msgid ""
+@@ -3651,10 +3774,38 @@ msgid ""
  "Installing it might result in the extension failing to load."
  msgstr ""
  
@@ -1649,7 +1658,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/alerts/rules/network.ts
  msgid ""
  "The network link is working but domain names cannot be resolved. Check the "
-@@ -3677,6 +3828,10 @@ msgid ""
+@@ -3685,6 +3836,10 @@ msgid ""
  "be in calm water and far from walls and objects."
  msgstr ""
  
@@ -1660,7 +1669,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/wizard/Wizard.vue
  msgid ""
  "The wizard will only show if BlueOS is updated and further configuration is "
-@@ -3787,6 +3942,13 @@ msgid ""
+@@ -3795,6 +3950,13 @@ msgid ""
  "doing when this happened."
  msgstr ""
  
@@ -1674,7 +1683,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/kraken/modals/ExtensionDetailsModal.vue
  msgid "This version is not compatible with current machine running BlueOS"
  msgstr ""
-@@ -3888,6 +4050,12 @@ msgstr ""
+@@ -3896,6 +4058,12 @@ msgstr ""
  msgid "Try to fetch DNS namservers from the host"
  msgstr ""
  
@@ -1687,7 +1696,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/version-chooser/VersionChooser.vue
  #, javascript-format
  msgid ""
-@@ -3982,7 +4150,9 @@ msgid "Update time"
+@@ -3990,7 +4158,9 @@ msgid "Update time"
  msgstr ""
  
  #: src/components/app/NewVersionNotificator.vue
@@ -1697,7 +1706,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #, javascript-format
  msgid "Update to ${ 0 }"
  msgstr ""
-@@ -3997,6 +4167,10 @@ msgstr ""
+@@ -4005,6 +4175,10 @@ msgstr ""
  msgid "Update to latest ${ 0 }"
  msgstr ""
  
@@ -1708,7 +1717,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/customization/BrandingUploader.vue
  #: src/components/customization/ThemeCustomization.vue
  #: src/components/version-chooser/VersionChooser.vue
-@@ -4186,6 +4360,13 @@ msgstr ""
+@@ -4194,6 +4368,13 @@ msgstr ""
  msgid "Versions"
  msgstr ""
  
@@ -1722,7 +1731,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/health/GpsTrayMenu.vue
  msgid "Vertical Accuracy"
  msgstr ""
-@@ -4271,6 +4452,14 @@ msgstr ""
+@@ -4279,6 +4460,14 @@ msgstr ""
  msgid "Waiting for parameters.."
  msgstr ""
  
@@ -1737,7 +1746,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/cloud/CloudSyncStatusTab.vue
  #, javascript-format
  msgid "Waiting to upload • ${ 0 }"
-@@ -4298,6 +4487,8 @@ msgid ""
+@@ -4306,6 +4495,8 @@ msgid ""
  "can skip this wizard."
  msgstr ""
  
@@ -1746,7 +1755,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/version-chooser/VersionCard.vue
  msgid "What's new?"
  msgstr ""
-@@ -4411,6 +4602,11 @@ msgstr ""
+@@ -4419,6 +4610,11 @@ msgstr ""
  msgid "Zenoh Network"
  msgstr ""
  
@@ -1758,7 +1767,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/cloud/CloudSettingsTab.vue
  msgid "already have a token"
  msgstr ""
-@@ -4419,6 +4615,14 @@ msgstr ""
+@@ -4427,6 +4623,14 @@ msgstr ""
  msgid "an automatically assigned port"
  msgstr ""
  
@@ -1773,7 +1782,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/ethernet/InterfaceCard.vue
  msgid "dynamic IP"
  msgstr ""
-@@ -4431,6 +4635,10 @@ msgstr ""
+@@ -4439,6 +4643,10 @@ msgstr ""
  msgid "fetching..."
  msgstr ""
  
@@ -1784,7 +1793,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/vehiclesetup/MotorDetection.vue
  msgid "incorrect frame selection"
  msgstr ""
-@@ -4439,10 +4647,22 @@ msgstr ""
+@@ -4447,10 +4655,22 @@ msgstr ""
  msgid "incorrect motor mapping"
  msgstr ""
  
@@ -1807,7 +1816,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/parameter-editor/ServoFunctionGpioEditor.vue
  msgid "nothing"
  msgstr ""
-@@ -4451,6 +4671,10 @@ msgstr ""
+@@ -4459,6 +4679,10 @@ msgstr ""
  msgid "poor movement estimation"
  msgstr ""
  
@@ -1818,7 +1827,7 @@ index 2a1a3b099b..af3ce786ba 100644
  #: src/components/ethernet/InterfaceCard.vue
  msgid "static IP"
  msgstr ""
-@@ -4459,6 +4683,10 @@ msgstr ""
+@@ -4467,6 +4691,10 @@ msgstr ""
  msgid "tab."
  msgstr ""
  
