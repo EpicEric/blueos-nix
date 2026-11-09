@@ -32,7 +32,10 @@ rustPlatform.buildRustPackage {
 
   nativeBuildInputs = [ pkg-config ];
 
-  patches = [ ./no-download.patch ];
+  patches = [
+    ./no-download.patch
+    ./journal-forward-debug.patch
+  ];
 
   postPatch = ''
     cp ${./Cargo.lock} Cargo.lock
