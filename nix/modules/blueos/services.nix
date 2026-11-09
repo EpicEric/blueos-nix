@@ -1,4 +1,4 @@
-# One systemd unit per entry in core/start-blueos-core at BlueOS 1.4.7.
+# One systemd unit per entry in core/start-blueos-core.
 #
 # The Python services are already wrapped by blueos-core: each $out/bin/<name>
 # sets PYTHONPATH to the service directory and puts the ArduPilot scripts on
@@ -15,18 +15,27 @@ let
 
   blueos = cfg.package;
   logs = "/var/logs/blueos/services";
+  userdata = "/usr/blueos/userdata";
 
-  # zenohd only searches next to its own binary and in the directories named
-  # here, while the packaged plugins live in $out/lib.
   zenohConfig = pkgs.writeText "blueos-zenoh.json5" ''
     {
-      plugins_loading: { enabled: true, search_dirs: ["${pkgs.zenoh}/lib"] },
-      plugins: { rest: { http_port: 7117 } }
+      adminspace: { enabled: true },
+      metadata: { name: "vehicle" },
+      plugins_loading: {
+        enabled: true,
+        search_dirs: [
+          "${cfg.packages.zenoh}/lib"
+          "${cfg.packages.zenoh-backend-filesystem}/lib"
+          "${cfg.packages.zenoh-plugin-remote-api}/lib"
+        ],
+      },
+      plugins: {
+        rest: { http_port: 7117 },
+        remote_api: { websocket_port: 7118 },
+      },
     }
   '';
 
-  # mavlink-camera-manager is a foreign binary, so nothing wraps it with the
-  # GStreamer plugin path.
   gstPluginPath = lib.makeSearchPathOutput "lib" "lib/gstreamer-1.0" (
     with pkgs.gst_all_1;
     [
@@ -42,14 +51,17 @@ let
     ]
   );
 
-  # The services look tool binaries up by name, the way the container does.
   toolPath = [
     cfg.packages.ardupilot-tools
     cfg.packages.bridges
+    cfg.packages.disktest
     cfg.packages.machineid-cli
     cfg.packages.mavlink-router
     cfg.packages.mavlink-server
     cfg.packages.mavp2p
+    cfg.packages.mcap
+    cfg.packages.mcap-foxglove-video-extract
+    pkgs.gst_all_1.gst-plugins-base
   ];
 
   python = name: args: lib.escapeShellArgs ([ "${blueos}/bin/${name}" ] ++ args);
@@ -190,6 +202,8 @@ in
             --log-path ${logs}/mavlink-camera-manager \
             --stun-server stun://stun.l.google.com:19302 \
             --enable-realtime-threads \
+            --recorder=external \
+            --zenoh \
             --verbose
         '';
         environment.GST_PLUGIN_SYSTEM_PATH_1_0 = gstPluginPath;
@@ -249,7 +263,22 @@ in
 
       zenohd = mkService {
         name = "zenohd";
-        exec = "${pkgs.zenoh}/bin/zenohd -c ${zenohConfig}";
+        exec = ''
+          ${cfg.packages.zenoh}/bin/zenohd -c ${zenohConfig}
+        '';
+        # Upstream sets this so the filesystem backend has a root to place
+        # storages under. Nothing declares a storage yet, but the variable has
+        # to exist before one can be added without touching the unit.
+        environment.ZENOH_BACKEND_FS_ROOT = "${userdata}/zenoh";
+      };
+
+      recorder = mkService {
+        name = "recorder";
+        memoryMax = 250;
+        exec = ''
+          ${cfg.packages.blueos-recorder}/bin/blueos-recorder \
+            --recorder-path ${userdata}/recorder
+        '';
       };
 
       beacon = mkService {
@@ -318,16 +347,6 @@ in
           BLUEOS_UPDATES_MANIFEST = cfg.updates.manifestUrl;
         };
       };
-      log-zipper = mkService {
-        name = "log_zipper";
-        memoryMax = 250;
-        nice = 19;
-        exec = python "log_zipper" [
-          "/shortcuts/system_logs/**/*.log"
-          "--max-age-minutes"
-          "60"
-        ];
-      };
 
       bag-of-holding = mkService {
         name = "bag_of_holding";
@@ -335,13 +354,40 @@ in
         exec = python "bag_of_holding" [ ];
       };
 
+      # Upstream ships this entry commented out, but the frontend's RecordsView
+      # still calls /recorder-extractor/ and nginx still proxies it, so it is
+      # enabled here. Without it the recordings page loads and every request
+      # fails.
+      recorder-extractor = mkService {
+        name = "recorder_extractor";
+        memoryMax = 250;
+        exec = python "recorder_extractor" [ ];
+        serviceConfig.ReadWritePaths = [ "${userdata}/recorder" ];
+      };
+
+      disk-usage = mkService {
+        name = "disk_usage";
+        memoryMax = 250;
+        exec = python "disk_usage" [ ];
+        # disktest benchmarks the card by writing a temporary file under /tmp,
+        # and the service reports on the whole filesystem rather than a device.
+        serviceConfig.PrivateDevices = false;
+      };
+
+      customization = mkService {
+        name = "customization";
+        memoryMax = 250;
+        exec = python "customization" [ ];
+        # stores uploaded .glb models and branding files in userdata
+        serviceConfig.ReadWritePaths = [ userdata ];
+      };
+
       linux2rest = mkService {
         name = "linux2rest";
         memoryMax = 250;
         exec = ''
           ${cfg.packages.linux2rest}/bin/linux2rest \
-            --log-path ${logs}/linux2rest \
-            --log-settings netstat=30,platform=10,serial-ports=10,system-cpu=10,system-disk=30,system-info=10,system-memory=10,system-network=10,system-process=60,system-temperature=10,system-unix-time-seconds=10
+            --log-settings netstat=30,platform=10,serial-ports=10,cpu=10,disk=30,info=10,memory=10,network=10,process=60,temperature=10,unix-time-seconds=10,usb=60
         '';
         # reports on host processes, devices and interfaces
         serviceConfig = {
@@ -349,7 +395,6 @@ in
           PrivateDevices = false;
         };
       };
-
       iperf3 = mkService {
         name = "iperf3";
         memoryMax = 250;
