@@ -44,6 +44,7 @@ let
     patches = [
       ./cable-guy-dhcpcd.patch
       ./helper-nginx-paths.patch
+      ./helper-nixos-factory-mode.patch
       ./navigator-bmp390.patch
     ];
   };
