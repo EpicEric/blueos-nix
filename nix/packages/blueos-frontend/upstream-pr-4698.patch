@@ -7,18 +7,27 @@
 # than rebased from blueos-nix's own 3,170-line version because the upstream
 # form is what will be maintained.
 #
-# Base: 73efc64027df4209e384f81638be922ab1bf7754, the PR head. The PR is 13
+# Base: db6f25af759f601bc2683717ceca1a07d73e22bf, the PR head. The PR is 13
 # commits on top of the pinned rev, and this is that whole range as one diff,
 # so it applies to the pin and needs no intermediate patches. It includes the
-# ttag imports the PR's new components were missing, which made the chooser
-# render an empty page.
+# ttag imports and unique component tags the PR was missing, without which the
+# chooser and the health cards render the container variants or crash outright.
 #
 # Delete once merged. Any change to the PR means regenerating this file:
 #   git -C <BlueOS> diff <pinned-rev> <PR-head>
 diff --git a/core/frontend/src/App.vue b/core/frontend/src/App.vue
-index bfc3000113..dd81782a22 100644
+index bfc3000113..12cb858204 100644
 --- a/core/frontend/src/App.vue
 +++ b/core/frontend/src/App.vue
+@@ -376,7 +376,7 @@
+     </v-main>
+     <ethernet-updater />
+     <mavlink-updater />
+-    <new-version-notificator />
++    <blueos-new-version-notificator />
+     <Wizard @start-tour="setStartTour" />
+     <alerter />
+     <VTour
 @@ -405,12 +405,14 @@ import wifi from '@/store/wifi'
  import { Service } from '@/types/helper'
  import { convertGitDescribeToTag, convertGitDescribeToUrl } from '@/utils/helper_functions'
@@ -40,7 +49,7 @@ index bfc3000113..dd81782a22 100644
      Alerter,
      'vehicle-banner': VehicleBanner,
 -    'new-version-notificator': NewVersionNotificator,
-+    'new-version-notificator': use_nixos_updates ? NewVersionNotificatorNixos : NewVersionNotificatorDocker,
++    'blueos-new-version-notificator': use_nixos_updates ? NewVersionNotificatorNixos : NewVersionNotificatorDocker,
      SystemCheckerTrayMenu,
      VehicleRebootRequiredTrayMenu,
      OnBoardComputerRequiredTrayMenu,
@@ -55,7 +64,7 @@ index bfc3000113..dd81782a22 100644
    beforeDestroy() {
 diff --git a/core/frontend/src/components/app/NewVersionNotificatorNixos.vue b/core/frontend/src/components/app/NewVersionNotificatorNixos.vue
 new file mode 100644
-index 0000000000..0ddc5ccf04
+index 0000000000..70d8e41e32
 --- /dev/null
 +++ b/core/frontend/src/components/app/NewVersionNotificatorNixos.vue
 @@ -0,0 +1,105 @@
@@ -74,7 +83,7 @@ index 0000000000..0ddc5ccf04
 +        v-if="show_release_notes"
 +        class="release-notes-preview"
 +      >
-+        <release-notes
++        <release-notes-nixos
 +          :key="latest_version?.version"
 +          :version="latest_version?.version ?? ''"
 +        />
@@ -97,7 +106,7 @@ index 0000000000..0ddc5ccf04
 +<script lang="ts">
 +import Vue from 'vue'
 +
-+import ReleaseNotes from '@/components/version-chooser/ReleaseNotesNixos.vue'
++import ReleaseNotesNixos from '@/components/version-chooser/ReleaseNotesNixos.vue'
 +import settings from '@/libs/settings'
 +import helper from '@/store/helper'
 +import { InternetConnectionState } from '@/types/helper'
@@ -107,7 +116,7 @@ index 0000000000..0ddc5ccf04
 +export default Vue.extend({
 +  name: 'NewVersionNotificatorNixos',
 +  components: {
-+    ReleaseNotes,
++    ReleaseNotesNixos,
 +  },
 +  data() {
 +    return {
@@ -263,7 +272,7 @@ index 0000000000..3aef82970d
 +</script>
 diff --git a/core/frontend/src/components/version-chooser/GenerationCard.vue b/core/frontend/src/components/version-chooser/GenerationCard.vue
 new file mode 100644
-index 0000000000..a5a4e768bf
+index 0000000000..bb62b0ba89
 --- /dev/null
 +++ b/core/frontend/src/components/version-chooser/GenerationCard.vue
 @@ -0,0 +1,202 @@
@@ -376,7 +385,7 @@ index 0000000000..a5a4e768bf
 +        </v-btn>
 +      </div>
 +    </div>
-+    <release-notes
++    <release-notes-nixos
 +      v-if="showReleaseNotes && notesExpanded"
 +      :key="generation.version"
 +      class="pb-4"
@@ -396,12 +405,12 @@ index 0000000000..a5a4e768bf
 +import { Generation } from '@/types/version-chooser-nixos'
 +import { getDocsUrl, isSemVer } from '@/utils/version_chooser_nixos'
 +
-+import ReleaseNotes from './ReleaseNotesNixos.vue'
++import ReleaseNotesNixos from './ReleaseNotesNixos.vue'
 +
 +export default Vue.extend({
 +  name: 'GenerationCard',
 +  components: {
-+    ReleaseNotes,
++    ReleaseNotesNixos,
 +  },
 +  props: {
 +    generation: {
@@ -471,7 +480,7 @@ index 0000000000..a5a4e768bf
 +</script>
 diff --git a/core/frontend/src/components/version-chooser/ReleaseCard.vue b/core/frontend/src/components/version-chooser/ReleaseCard.vue
 new file mode 100644
-index 0000000000..654154a014
+index 0000000000..8b78acafe2
 --- /dev/null
 +++ b/core/frontend/src/components/version-chooser/ReleaseCard.vue
 @@ -0,0 +1,197 @@
@@ -575,7 +584,7 @@ index 0000000000..654154a014
 +        </v-btn>
 +      </div>
 +    </div>
-+    <release-notes
++    <release-notes-nixos
 +      v-if="showReleaseNotes && notesExpanded"
 +      :key="release.version"
 +      class="pb-4"
@@ -595,12 +604,12 @@ index 0000000000..654154a014
 +import { Release } from '@/types/version-chooser-nixos'
 +import { getDocsUrl, isSemVer } from '@/utils/version_chooser_nixos'
 +
-+import ReleaseNotes from './ReleaseNotesNixos.vue'
++import ReleaseNotesNixos from './ReleaseNotesNixos.vue'
 +
 +export default Vue.extend({
 +  name: 'ReleaseCard',
 +  components: {
-+    ReleaseNotes,
++    ReleaseNotesNixos,
 +  },
 +  props: {
 +    release: {
@@ -2212,9 +2221,18 @@ index 0000000000..0373b444e5
 +  sortReleases,
 +}
 diff --git a/core/frontend/src/views/MainView.vue b/core/frontend/src/views/MainView.vue
-index cc9c348b5e..b23214fe25 100644
+index cc9c348b5e..c7213208fe 100644
 --- a/core/frontend/src/views/MainView.vue
 +++ b/core/frontend/src/views/MainView.vue
+@@ -17,7 +17,7 @@
+         <!-- eslint-disable-next-line vue/no-v-html, max-len -->
+         <span v-html="t`Before you start, we highly recommend <a href='https://blueos.cloud/docs/stable/usage/getting-started/#connect-internet' target='_blank'>connecting to the internet</a> and performing a <a href='https://blueos.cloud/docs/stable/usage/getting-started/#select-version' target='_blank'>system update to the latest available BlueOS version</a>.`" />
+       </v-alert>
+-      <self-health-test />
++      <blueos-self-health-test />
+     </v-row>
+     <div class="grid-holder">
+       <div class="app-grid">
 @@ -80,7 +80,8 @@
  import { t } from 'ttag'
  import Vue from 'vue'
@@ -2238,7 +2256,7 @@ index cc9c348b5e..b23214fe25 100644
    name: 'MainView',
    components: {
 -    SelfHealthTest,
-+    SelfHealthTest: use_nixos_updates ? SelfHealthTestNixos : SelfHealthTestDocker,
++    'blueos-self-health-test': use_nixos_updates ? SelfHealthTestNixos : SelfHealthTestDocker,
      GenericViewer,
    },
    data() {
