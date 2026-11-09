@@ -117,6 +117,8 @@ in
       isSystemUser = true;
       group = "blueos";
       extraGroups = [ "dialout" ];
+      home = "/home/blueos";
+      createHome = true;
     };
     users.groups.blueos = { };
 
