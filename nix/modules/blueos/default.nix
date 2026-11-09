@@ -37,7 +37,10 @@ let
         "/home/pi/frontend"
         "/home/pi/tools/nginx/extensions"
         # The version chooser service is gone: versions are NixOS generations
-        # now, served by blueos-updates.
+        # now, served by blueos-updates. The pinned nginx.conf still proxies the
+        # container's chooser port under this path, and the frontend's
+        # VersionChooserNixos.vue calls /updates/v1.0 on the same origin, so the
+        # location name is what has to change.
         "location /version-chooser/ {"
       ]
       [
@@ -144,6 +147,55 @@ in
         default = pkgs.callPackage ../../packages/blueos-updates { };
         defaultText = lib.literalMD "this flake's package";
         description = "Update daemon, which lists and activates NixOS generations.";
+      };
+
+      disktest = mkOption {
+        type = types.package;
+        default = pkgs.callPackage ../../packages/disktest { };
+        defaultText = lib.literalMD "this flake's package";
+        description = "Sequential disk read/write benchmark used by disk_usage.";
+      };
+
+      mcap = mkOption {
+        type = types.package;
+        default = pkgs.mcap-cli;
+        defaultText = lib.literalMD "nixpkgs' mcap-cli";
+        description = "MCAP CLI, which recorder_extractor runs doctor and recover with.";
+      };
+
+      mcap-foxglove-video-extract = mkOption {
+        type = types.package;
+        default = pkgs.callPackage ../../packages/mcap-foxglove-video-extract { };
+        defaultText = lib.literalMD "this flake's package";
+        description = "Extracts video tracks out of MCAP recordings.";
+      };
+
+      zenoh = mkOption {
+        type = types.package;
+        default = pkgs.callPackage ../../packages/zenoh { };
+        defaultText = lib.literalMD "this flake's package";
+        description = "Zenoh router, with the rest and storage plugins.";
+      };
+
+      zenoh-backend-filesystem = mkOption {
+        type = types.package;
+        default = pkgs.callPackage ../../packages/zenoh-backend-filesystem { };
+        defaultText = lib.literalMD "this flake's package";
+        description = "Zenoh filesystem storage backend.";
+      };
+
+      blueos-recorder = mkOption {
+        type = types.package;
+        default = pkgs.callPackage ../../packages/blueos-recorder { };
+        defaultText = lib.literalMD "this flake's package";
+        description = "Records Zenoh traffic to MCAP files.";
+      };
+
+      zenoh-plugin-remote-api = mkOption {
+        type = types.package;
+        default = pkgs.callPackage ../../packages/zenoh-plugin-remote-api { };
+        defaultText = lib.literalMD "this flake's package";
+        description = "Zenoh websocket plugin, which the frontend's zenoh-ts client speaks to.";
       };
     };
 
@@ -375,6 +427,16 @@ in
       "d /usr/blueos/userdata/settings 0777 root root -"
       "d /usr/blueos/userdata/firmware 0777 root root -"
       "d /usr/blueos/extensions 0777 root root -"
+      # recorder writes MCAP files here and recorder_extractor reads them back
+      "d /usr/blueos/userdata/recorder 0777 root root -"
+      # customization serves uploaded models, branding and styles from these
+      "d /usr/blueos/userdata/modeloverrides 0777 root root -"
+      "d /usr/blueos/userdata/branding 0777 root root -"
+      "d /usr/blueos/userdata/styles 0777 root root -"
+      # the swagger and redoc assets that use_local_docs_assets() mounts
+      "L+ /usr/blueos/static - - - - ${blueos.passthru.swagger-ui}"
+      # root for the zenoh filesystem backend, named by ZENOH_BACKEND_FS_ROOT
+      "d /usr/blueos/userdata/zenoh 0777 root root -"
       "d /etc/blueos 0755 root root -"
       "d /etc/filebrowser 0755 root root -"
       "d /shortcuts 0755 root root -"
@@ -397,6 +459,10 @@ in
         "/usr/blueos"
         "/var/lib/blueos"
       ];
+      # The pinned BlueOS nginx.conf writes access_log and error_log under
+      # /var/log/nginx, but the NixOS module logs to the journal and does not
+      # create the directory.
+      LogsDirectory = "nginx";
       SupplementaryGroups = [
         "docker"
         "podman"
@@ -414,7 +480,7 @@ in
 
     services.udev.extraRules = ''
       ${builtins.readFile "${src}/install/udev/100.autopilot.rules"}
-      ACTION=="add", SUBSYSTEM=="usb", TEST=="power/control", ATTR{power/control}="on"
+      ${builtins.readFile "${src}/install/udev/110.usb-power.rules"}
       SUBSYSTEM=="vchiq|vcio|vc-mem", GROUP="video", MODE="0660"
     '';
 
