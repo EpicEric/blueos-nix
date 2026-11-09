@@ -17,24 +17,24 @@ let
   logs = "/var/logs/blueos/services";
   userdata = "/usr/blueos/userdata";
 
-  zenohConfig = pkgs.writeText "blueos-zenoh.json5" ''
-    {
-      adminspace: { enabled: true },
-      metadata: { name: "vehicle" },
-      plugins_loading: {
-        enabled: true,
-        search_dirs: [
+  zenohConfig = pkgs.writeText "blueos-zenoh.json5" (
+    builtins.toJSON {
+      adminspace.enabled = true;
+      metadata.name = "vehicle";
+      plugins_loading = {
+        enabled = true;
+        search_dirs = [
           "${cfg.packages.zenoh}/lib"
           "${cfg.packages.zenoh-backend-filesystem}/lib"
           "${cfg.packages.zenoh-plugin-remote-api}/lib"
-        ],
-      },
-      plugins: {
-        rest: { http_port: 7117 },
-        remote_api: { websocket_port: 7118 },
-      },
+        ];
+      };
+      plugins = {
+        rest.http_port = 7117;
+        remote_api.websocket_port = 7118;
+      };
     }
-  '';
+  );
 
   gstPluginPath = lib.makeSearchPathOutput "lib" "lib/gstreamer-1.0" (
     with pkgs.gst_all_1;
