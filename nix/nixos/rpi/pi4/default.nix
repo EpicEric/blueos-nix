@@ -42,6 +42,10 @@ in
       { i2c6.baudrate = 400000; }
       { spi0-led = { }; }
       { spi1-3cs = { }; }
+      # Binds the at24 driver to the Navigator's ID EEPROM at 0x50, which the
+      # EEPROM endpoints read through /sys. The Pi 5 board script does not
+      # load it.
+      { navigator-eeprom = { }; }
       { dwc2.dr_mode = "otg"; }
     ];
   };

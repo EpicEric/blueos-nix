@@ -17,15 +17,18 @@ let
 
   install = "${blueos.passthru.src}/install";
 
-  # BlueOS ships this overlay as source and compiles it on the board. The
+  # BlueOS ships these overlays as source and compiles them on the board. The
   # firmware install script only stages overlays already in the firmware
-  # package, so it has to be built here instead.
+  # package, so they have to be built here instead.
   firmware = pkgs.runCommand "raspberrypifw-navigator" { nativeBuildInputs = [ pkgs.dtc ]; } ''
     cp -r ${pkgs.raspberrypifw} $out
     chmod -R u+w $out
     dtc -@ -Hepapr -I dts -O dtb \
       -o $out/share/raspberrypi/boot/overlays/spi0-led.dtbo \
       ${install}/overlays/spi0-led.dts
+    dtc -@ -Hepapr -I dts -O dtb \
+      -o $out/share/raspberrypi/boot/overlays/navigator-eeprom.dtbo \
+      ${install}/overlays/navigator-eeprom.dts
   '';
 in
 {
