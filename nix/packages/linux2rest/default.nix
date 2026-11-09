@@ -35,6 +35,7 @@ rustPlatform.buildRustPackage {
   patches = [
     ./no-download.patch
     ./journal-forward-debug.patch
+    ./journal-buffer-cap.patch
   ];
 
   postPatch = ''
