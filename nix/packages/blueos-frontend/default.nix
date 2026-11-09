@@ -102,6 +102,7 @@ stdenvNoCC.mkDerivation {
 
   patches = [
     ./upstream-pr-4698.patch
+    ./systemid-nixos-restart.patch
   ];
 
   postPatch = ''

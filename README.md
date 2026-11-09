@@ -127,6 +127,7 @@ The patches currently carried:
 | `blueos-core/helper-nixos-factory-mode.patch` | Never upstream | Skips the factory-mode probe, which asks the container version chooser for a `factory` tag. Generations have no such tag, so the probe only ever 404s here.      |
 | `blueos-core/helper-nginx-paths.patch`   | Permanently carried | Points helper at this repo's nginx pid file, extension directory and config. Upstream's paths are container-specific.                                          |
 | `blueos-core/navigator-bmp390.patch`     | Upstream then drop  | Upstream PR 4677, verbatim, so the carried patch is what will merge.                                                                                           |
+| `blueos-frontend/systemid-nixos-restart.patch` | Upstream then drop | Restarts the core through the backend-aware helper. Belongs in PR 4698, which patches the same call in `PowerMenu.vue` but misses `SystemId.vue`; fold it in if the PR is updated. |
 | `blueos-frontend/upstream-pr-4698.patch` | Upstream then drop  | The generation-based version chooser, gated on `VITE_BLUEOS_UPDATES === 'nixos'`. Replaces a 3,000-line local patch that conflicted with the frontend rewrite. |
 
 ## Known gaps
