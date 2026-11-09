@@ -86,6 +86,15 @@ in
     }
   ];
 
+  # Compressed swap in RAM in front of the swapfile. The zram module defaults to
+  # priority 5, which would put the card first, so the swapfile above is only
+  # reached once zram is full. Without it every page of reclaim is a write to
+  # the SD card, which is both slow and what wears it out.
+  zramSwap = {
+    enable = mkDefault true;
+    priority = mkDefault 100;
+  };
+
   services.blueos = {
     enable = mkDefault true;
     package = mkDefault blueos;
