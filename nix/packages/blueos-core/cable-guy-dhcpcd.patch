@@ -1,6 +1,18 @@
+# Replaces dhclient with dhcpcd in trigger_dynamic_ip_acquisition.
+#
+# This is correct on NixOS, where no dhcpcd daemon owns the interface, and
+# wrong in the container: on Bookworm and Bullseye a dhcpcd daemon already
+# holds the interface, so the one-shot client fails and the method returns
+# None without changing anything. It would also regress the DHCPCD handler,
+# which inherits this method from AbstractNetworkHandler rather than
+# overriding it.
+#
+# Never propose this upstream. Upstream must not assume either client.
+diff --git a/core/services/cable_guy/networksetup.py b/core/services/cable_guy/networksetup.py
+index 99300de..f6a6946 100755
 --- a/core/services/cable_guy/networksetup.py
 +++ b/core/services/cable_guy/networksetup.py
-@@ -122,7 +122,7 @@
+@@ -121,7 +121,7 @@ class AbstractNetworkHandler:
          """
          try:
              # Just run dhclient without releasing existing IPs
@@ -9,7 +21,7 @@
              logger.info(f"Running: {command}")
              dhclient_output = os.popen(command).read()
  
-@@ -131,7 +131,7 @@
+@@ -130,7 +130,7 @@ class AbstractNetworkHandler:
                  logger.info(f"dhclient timed out for interface {interface_name}.")
                  return None
  

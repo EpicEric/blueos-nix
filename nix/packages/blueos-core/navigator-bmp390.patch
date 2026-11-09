@@ -1,23 +1,31 @@
+# Accepts a BMP390 barometer on i2c address 0x77, which newer Navigator
+# revisions carry instead of the BME280 on 0x76. The two are alternatives, so
+# the barometer becomes any-of rather than required.
+#
+# This is upstream PR 4677, kept verbatim so the patch matches what upstream
+# will merge. Delete it once that PR lands.
+diff --git a/core/services/ardupilot_manager/flight_controller_detector/linux/navigator.py b/core/services/ardupilot_manager/flight_controller_detector/linux/navigator.py
+index 406ef37..943bf90 100644
 --- a/core/services/ardupilot_manager/flight_controller_detector/linux/navigator.py
 +++ b/core/services/ardupilot_manager/flight_controller_detector/linux/navigator.py
-@@ -40,10 +40,14 @@
+@@ -36,10 +36,14 @@ class Navigator(LinuxFlightController):
  class NavigatorPi5(Navigator):
-     required_devices = {
+     required_devices: ClassVar[Dict[str, Tuple[int, int]]] = {
          "ADS1115": (0x48, 1),
 -        "BME280": (0x76, 1),
          "PCA9685": (0x40, 3),
      }
  
-+    barometer_devices = {
++    barometer_devices: ClassVar[Dict[str, Tuple[int, int]]] = {
 +        "BME280": (0x76, 1),
 +        "BMP390_0x77": (0x77, 1),
 +    }
 +
-     magnetometer_devices = {
+     magnetometer_devices: ClassVar[Dict[str, Tuple[int, int]]] = {
          "AK09915": (0x0C, 1),
          "IIS2MDC_0x1E": (0x1E, 1),
-@@ -61,19 +65,24 @@
-         if not self.is_pi5():
+@@ -57,19 +61,24 @@ class NavigatorPi5(Navigator):
+         if not get_cpu_type() == CpuType.PI5:
              return False
          required_ok = all(self.check_for_i2c_device(bus, address) for address, bus in self.required_devices.values())
 +        barometer_ok = any(self.check_for_i2c_device(bus, address) for address, bus in self.barometer_devices.values())
@@ -29,22 +37,22 @@
  
  
  class NavigatorPi4(Navigator):
-     required_devices = {
+     required_devices: ClassVar[Dict[str, Tuple[int, int]]] = {
          "ADS1115": (0x48, 1),
 -        "BME280": (0x76, 1),
          "PCA9685": (0x40, 4),
      }
  
-+    barometer_devices = {
++    barometer_devices: ClassVar[Dict[str, Tuple[int, int]]] = {
 +        "BME280": (0x76, 1),
 +        "BMP390_0x77": (0x77, 1),
 +    }
 +
-     magnetometer_devices = {
+     magnetometer_devices: ClassVar[Dict[str, Tuple[int, int]]] = {
          "AK09915": (0x0C, 1),
          "IIS2MDC_0x1E": (0x1E, 1),
-@@ -109,7 +118,8 @@
-         if self.is_pi5():
+@@ -107,7 +116,8 @@ class NavigatorPi4(Navigator):
+         if not get_cpu_type() == CpuType.PI4:
              return False
          required_ok = all(self.check_for_i2c_device(bus, address) for address, bus in self.required_devices.values())
 +        barometer_ok = any(self.check_for_i2c_device(bus, address) for address, bus in self.barometer_devices.values())
