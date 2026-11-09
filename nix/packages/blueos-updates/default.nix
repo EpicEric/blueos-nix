@@ -14,9 +14,7 @@ rustPlatform.buildRustPackage {
 
   src = ./.;
 
-  cargoLock = {
-    lockFile = ./Cargo.lock;
-  };
+  cargoLock.lockFile = ./Cargo.lock;
 
   # nix-env, nix-store and switch-to-configuration are how a version is
   # installed and activated, so they have to be on PATH rather than assumed

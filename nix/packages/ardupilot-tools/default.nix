@@ -13,7 +13,7 @@ let
   ]);
 
   # Each script is pinned to the commit core/tools/ardupilot_tools/setup-python-libs.sh
-  # uses at BlueOS 1.4.7.
+  # uses at this repo's pinned BlueOS commit.
   script =
     commit: file: hash:
     fetchurl {
