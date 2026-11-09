@@ -1,0 +1,2296 @@
+# Upstream PR 4698, "core: frontend: components: version-chooser: Support
+# NixOS update backend". It replaces the container version chooser with a
+# generation chooser as *Nixos.vue siblings selected at build time by
+# VITE_BLUEOS_UPDATES, which is the value blueos-frontend already exports.
+#
+# Kept as a patch only until that PR lands. It was applied as a patch rather
+# than rebased from blueos-nix's own 3,170-line version because the upstream
+# form is what will be maintained.
+#
+# Base: bd007e5788498fe7ad9a451f83700df150e8f389 (PR head, applies to
+# e5cd9aae cleanly). Delete once merged.
+diff --git a/core/frontend/src/App.vue b/core/frontend/src/App.vue
+index bfc3000113..dd81782a22 100644
+--- a/core/frontend/src/App.vue
++++ b/core/frontend/src/App.vue
+@@ -405,12 +405,14 @@ import wifi from '@/store/wifi'
+ import { Service } from '@/types/helper'
+ import { convertGitDescribeToTag, convertGitDescribeToUrl } from '@/utils/helper_functions'
+ import updateTime from '@/utils/update_time'
++import use_nixos_updates from '@/utils/updates_backend'
+ import * as VCU from '@/utils/version_chooser'
+ 
+ import Alerter from './components/app/Alerter.vue'
+ import BackendStatusChecker from './components/app/BackendStatusChecker.vue'
+ import InternetTrayMenu from './components/app/InternetTrayMenu.vue'
+-import NewVersionNotificator from './components/app/NewVersionNotificator.vue'
++import NewVersionNotificatorDocker from './components/app/NewVersionNotificator.vue'
++import NewVersionNotificatorNixos from './components/app/NewVersionNotificatorNixos.vue'
+ import OnBoardComputerRequiredTrayMenu from './components/app/OnBoardComputerRequiredTrayMenu.vue'
+ import PiradeModeTrayMenu from './components/app/PirateModeTrayMenu.vue'
+ import PowerMenu from './components/app/PowerMenu.vue'
+@@ -460,7 +462,7 @@ export default Vue.extend({
+     'backend-status-checker': BackendStatusChecker,
+     Alerter,
+     'vehicle-banner': VehicleBanner,
+-    'new-version-notificator': NewVersionNotificator,
++    'new-version-notificator': use_nixos_updates ? NewVersionNotificatorNixos : NewVersionNotificatorDocker,
+     SystemCheckerTrayMenu,
+     VehicleRebootRequiredTrayMenu,
+     OnBoardComputerRequiredTrayMenu,
+@@ -827,7 +829,7 @@ export default Vue.extend({
+         // Invalid URL, ignore
+       }
+     })
+-    this.bootstrap_version = await VCU.loadBootstrapCurrentVersion()
++    this.bootstrap_version = use_nixos_updates ? undefined : await VCU.loadBootstrapCurrentVersion()
+   },
+ 
+   beforeDestroy() {
+diff --git a/core/frontend/src/components/app/NewVersionNotificatorNixos.vue b/core/frontend/src/components/app/NewVersionNotificatorNixos.vue
+new file mode 100644
+index 0000000000..0ddc5ccf04
+--- /dev/null
++++ b/core/frontend/src/components/app/NewVersionNotificatorNixos.vue
+@@ -0,0 +1,105 @@
++<template>
++  <v-dialog
++    v-model="should_open"
++    transition="dialog-top-transition"
++    width="fit-content"
++    max-width="80%"
++  >
++    <v-card>
++      <v-card-title class="justify-center pt-6">
++        {{ t`A new version is available!` }}
++      </v-card-title>
++      <v-card-text
++        v-if="show_release_notes"
++        class="release-notes-preview"
++      >
++        <release-notes
++          :key="latest_version?.version"
++          :version="latest_version?.version ?? ''"
++        />
++      </v-card-text>
++      <v-card-actions class="justify-center">
++        <v-btn
++          class="ma-6 elevation-2"
++          x-large
++          color="primary"
++          href="/tools/version-chooser"
++          @click="should_open = false"
++        >
++          {{ t`Update to ${latest_version && latest_version.version}` }}
++        </v-btn>
++      </v-card-actions>
++    </v-card>
++  </v-dialog>
++</template>
++
++<script lang="ts">
++import Vue from 'vue'
++
++import ReleaseNotes from '@/components/version-chooser/ReleaseNotesNixos.vue'
++import settings from '@/libs/settings'
++import helper from '@/store/helper'
++import { InternetConnectionState } from '@/types/helper'
++import { Release } from '@/types/version-chooser-nixos'
++import * as VCU from '@/utils/version_chooser_nixos'
++
++export default Vue.extend({
++  name: 'NewVersionNotificatorNixos',
++  components: {
++    ReleaseNotes,
++  },
++  data() {
++    return {
++      current_version: '',
++      latest_version: undefined as (undefined | Release),
++      should_open: false,
++    }
++  },
++  computed: {
++    can_fetch_remote(): boolean {
++      return helper.has_internet === InternetConnectionState.ONLINE
++        || helper.has_internet === InternetConnectionState.LIMITED
++    },
++    // A build with no release to point at would only be able to say the notes are unavailable
++    show_release_notes(): boolean {
++      return this.latest_version !== undefined && VCU.isSemVer(this.latest_version.version)
++    },
++  },
++  watch: {
++    can_fetch_remote() {
++      this.run()
++    },
++  },
++  mounted() {
++    this.run()
++  },
++  methods: {
++    /**
++     * The manifest is the only source of "new version": a build that is not
++     * published there is simply not offered, which is also true for a vehicle
++     * updated by deploy-rs to something the publisher has not released.
++     */
++    async run() {
++      await VCU.loadStatus()
++        .then((status) => { this.current_version = status.current.version })
++        .catch(() => { this.current_version = '' })
++
++      if (!this.can_fetch_remote || this.current_version === '') {
++        return
++      }
++
++      await VCU.loadReleases()
++        .then((response) => {
++          this.latest_version = VCU.getAvailableUpdate(this.current_version, response.releases)
++          const milliseconds_diff = Date.now() - settings.last_version_update_notification_time.getTime()
++          const days_diff = milliseconds_diff / (24 * 60 * 60 * 1000)
++          if (days_diff > 1 && this.latest_version !== undefined) {
++            settings.updateVersionUpdateNotificationTime()
++            this.should_open = true
++          }
++        })
++        .catch(() => { /* the version chooser reports an unreachable manifest */ })
++    },
++  },
++})
++</script>
+diff --git a/core/frontend/src/components/app/PowerMenu.vue b/core/frontend/src/components/app/PowerMenu.vue
+index 209d94a8b3..17b74390b9 100644
+--- a/core/frontend/src/components/app/PowerMenu.vue
++++ b/core/frontend/src/components/app/PowerMenu.vue
+@@ -108,9 +108,15 @@ import autopilot from '@/store/autopilot_manager'
+ import commander from '@/store/commander'
+ import { ShutdownType } from '@/types/commander'
+ import back_axios from '@/utils/api'
++import use_nixos_updates from '@/utils/updates_backend'
++import * as VersionChooserDocker from '@/utils/version_chooser'
++import * as VersionChooserNixos from '@/utils/version_chooser_nixos'
+ 
+ import SpinningLogo from '../common/SpinningLogo.vue'
+ 
++/** Restarting the core means a different endpoint depending on the backend. */
++const version_chooser_api = use_nixos_updates ? VersionChooserNixos : VersionChooserDocker
++
+ /// Used for internal status control
+ enum Status {
+   None,
+@@ -178,10 +184,7 @@ export default Vue.extend({
+     },
+     async restartContainer(): Promise<void> {
+       this.service_status = Status.Rebooting
+-      await back_axios({
+-        method: 'post',
+-        url: '/version-chooser/v1.0/version/restart',
+-      }).finally(() => setTimeout(this.waitForBackendToBeOnline, 15000))
++      await version_chooser_api.restartCore().finally(() => setTimeout(this.waitForBackendToBeOnline, 15000))
+     },
+     async poweroff(): Promise<void> {
+       this.service_status = Status.PoweringOff
+diff --git a/core/frontend/src/components/health/SelfHealthTestNixos.vue b/core/frontend/src/components/health/SelfHealthTestNixos.vue
+new file mode 100644
+index 0000000000..3aef82970d
+--- /dev/null
++++ b/core/frontend/src/components/health/SelfHealthTestNixos.vue
+@@ -0,0 +1,59 @@
++<template>
++  <v-container>
++    <v-row
++      class="mb-6 mt-6"
++      justify="center"
++      no-gutters
++    >
++      <v-alert
++        v-if="rolled_back"
++        border="top"
++        colored-border
++        type="warning"
++        elevation="2"
++        dismissible
++        @click="onWarningClick"
++      >
++        <!-- eslint-disable-next-line vue/no-v-html, max-len -->
++        <span v-html="t`The last BlueOS update did not become healthy, so the vehicle returned to ${current_version} by itself. The failed version is still installed and can be inspected in the <a href='/tools/version-chooser'>version chooser</a>. Please file an issue at <a href='https://github.com/bluerobotics/BlueOS/issues' target='_blank'>BlueOS/issues</a> or post on our <a href='https://discuss.bluerobotics.com/c/bluerobotics-software/blue-os/85' target='_blank'>forum</a>. Please include the <a href='#' class='js-download-logs'>System logs</a> if possible.`" />
++      </v-alert>
++    </v-row>
++  </v-container>
++</template>
++
++<script lang="ts">
++import Vue from 'vue'
++
++import commander from '@/store/commander'
++import * as VCU from '@/utils/version_chooser_nixos'
++
++export default Vue.extend({
++  name: 'SelfHealthTestNixos',
++  data: () => ({
++    rolled_back: false,
++    current_version: '',
++  }),
++  async mounted() {
++    await VCU.loadStatus()
++      .then((status) => {
++        // A rollback is the NixOS equivalent of the factory-version fallback: the
++        // system is running something older than what was asked for.
++        this.rolled_back = status.rolled_back_from !== null
++        this.current_version = status.current.version
++      })
++      .catch(() => { /* the version chooser shows an unreachable daemon */ })
++  },
++  methods: {
++    downloadLogs(): void {
++      window.open(`${commander.API_URL}/services/download_system_logs`, '_blank')
++    },
++    onWarningClick(event: MouseEvent): void {
++      const target = event.target as HTMLElement | null
++      if (target?.closest('.js-download-logs')) {
++        event.preventDefault()
++        this.downloadLogs()
++      }
++    },
++  },
++})
++</script>
+diff --git a/core/frontend/src/components/version-chooser/GenerationCard.vue b/core/frontend/src/components/version-chooser/GenerationCard.vue
+new file mode 100644
+index 0000000000..aef30f1ac3
+--- /dev/null
++++ b/core/frontend/src/components/version-chooser/GenerationCard.vue
+@@ -0,0 +1,201 @@
++<template>
++  <v-sheet
++    class="my-4 pa-4 py-sm-0"
++    :elevation="$vuetify.breakpoint.xs ? 1 : 0"
++  >
++    <div class="d-flex flex-column align-center flex-sm-row">
++      <div class="d-flex">
++        <v-list-item-avatar>
++          <v-icon :class="generation.current ? 'green' : 'grey'">
++            {{ generation.current ? 'mdi-checkbox-blank-circle' : 'mdi-checkbox-blank-circle-outline' }}
++          </v-icon>
++        </v-list-item-avatar>
++
++        <div>
++          <p
++            class="text-body-1 ma-0"
++            v-text="generation.version"
++          />
++          <p
++            class="text-caption text--secondary ma-0"
++            v-text="generationSubtitle"
++          />          <p
++            v-if="settings.is_pirate_mode"
++            class="text-caption text--secondary ma-0"
++            v-text="closureName"
++          />
++        </div>
++      </div>
++      <v-spacer />
++      <div class="d-flex flex-wrap justify-center align-center my-2">
++        <v-btn
++          v-if="showDocsLink"
++          v-tooltip="t`Documentation for this version`"
++          icon
++          :href="docsUrl"
++          target="_blank"
++          rel="noopener noreferrer"
++        >
++          <v-icon>mdi-book-open-variant</v-icon>
++        </v-btn>
++        <v-btn
++          v-if="showReleaseNotes && !notesExpanded"
++          key="show-notes"
++          class="mx-2 my-1"
++          text
++          @click="notesExpanded = true"
++        >
++          <v-icon left>
++            mdi-list-box-outline
++          </v-icon>
++          {{ t`What's new?` }}
++        </v-btn>
++        <v-alert
++          v-if="generation.current"
++          class="mx-2 my-1"
++          dense
++          text
++          type="success"
++        >
++          {{ t`Running` }}
++        </v-alert>
++        <v-alert
++          v-else-if="generation.known_good"
++          class="mx-2 my-1"
++          dense
++          text
++          type="info"
++        >
++          {{ t`Rollback target` }}
++        </v-alert>
++        <v-btn
++          v-if="!generation.current && settings.is_pirate_mode"
++          color="secondary"
++          class="mx-2 my-1"
++          :disabled="working"
++          :loading="working && activating"
++          @click="$emit('activate', 'switch')"
++          v-text="t`Switch to`"
++        />
++        <v-btn
++          v-if="!generation.current"
++          v-tooltip="t`Install it and reboot into it`"
++          color="primary"
++          class="mx-2 my-1"
++          :disabled="working"
++          :loading="working && activating"
++          @click="$emit('activate', 'boot')"
++          v-text="t`Boot into`"
++        />
++        <v-btn
++          v-if="canDelete"
++          color="error"
++          class="mx-2 my-1"
++          :disabled="working"
++          :loading="working && deleting"
++          @click="$emit('delete')"
++          v-text="t`Delete`"
++        />
++        <v-btn
++          v-if="showReleaseNotes && notesExpanded"
++          key="hide-notes"
++          v-tooltip="t`Hide release notes`"
++          icon
++          @click="notesExpanded = false"
++        >
++          <v-icon>mdi-chevron-up</v-icon>
++        </v-btn>
++      </div>
++    </div>
++    <release-notes
++      v-if="showReleaseNotes && notesExpanded"
++      :key="generation.version"
++      class="pb-4"
++      :version="generation.version"
++    />
++  </v-sheet>
++</template>
++
++<script lang="ts">
++import { formatDistanceToNow } from 'date-fns'
++import Vue, { PropType } from 'vue'
++
++import settings from '@/libs/settings'
++import helper from '@/store/helper'
++import { InternetConnectionState } from '@/types/helper'
++import { Generation } from '@/types/version-chooser-nixos'
++import { getDocsUrl, isSemVer } from '@/utils/version_chooser_nixos'
++
++import ReleaseNotes from './ReleaseNotesNixos.vue'
++
++export default Vue.extend({
++  name: 'GenerationCard',
++  components: {
++    ReleaseNotes,
++  },
++  props: {
++    generation: {
++      type: Object as PropType<Generation>,
++      required: true,
++    },
++    latestStable: {
++      type: String,
++      default: '',
++    },
++    activating: {
++      type: Boolean,
++      default: false,
++    },
++    deleting: {
++      type: Boolean,
++      default: false,
++    },
++    canDelete: {
++      type: Boolean,
++      default: false,
++    },
++  },
++  data() {
++    return {
++      settings,
++      notesExpanded: false,
++    }
++  },
++  computed: {
++    working(): boolean {
++      return this.activating || this.deleting
++    },
++    hasInternet(): boolean {
++      return helper.has_internet !== InternetConnectionState.OFFLINE
++        && helper.has_internet !== InternetConnectionState.UNKNOWN
++    },
++    // Branch builds and custom versions are not documented anywhere, unlike releases and master
++    showDocsLink(): boolean {
++      return isSemVer(this.generation.version) || this.generation.version === 'master'
++    },
++    docsUrl(): string {
++      return getDocsUrl(this.generation.version, this.latestStable)
++    },
++    showReleaseNotes(): boolean {
++      return this.hasInternet && isSemVer(this.generation.version)
++    },
++    /**
++     * The store path is the identity of the build, which the version alone does
++     * not give: two builds of one version are different generations.
++     */
++    closureName(): string {
++      const name = this.generation.toplevel.split('/').pop() ?? ''
++      return name.replace(/^[a-z0-9]{32}-/, '')
++    },
++    generationSubtitle(): string {
++      const head = `${t`Generation`} ${this.generation.generation}`
++      return `${head} - ${this.generation.channel} - ${this.asTimeAgo(this.generation.created)}`
++    },
++  },
++  methods: {
++    asTimeAgo(value: string): string {
++      return `${formatDistanceToNow(new Date(Date.parse(value)))} ${t`ago`}`
++    },
++  },
++})
++</script>
+diff --git a/core/frontend/src/components/version-chooser/ReleaseCard.vue b/core/frontend/src/components/version-chooser/ReleaseCard.vue
+new file mode 100644
+index 0000000000..58ff8c5d7b
+--- /dev/null
++++ b/core/frontend/src/components/version-chooser/ReleaseCard.vue
+@@ -0,0 +1,196 @@
++<template>
++  <v-sheet
++    class="my-4 pa-4 py-sm-0"
++    :elevation="$vuetify.breakpoint.xs ? 1 : 0"
++  >
++    <div class="d-flex flex-column align-center flex-sm-row">
++      <div class="d-flex">
++        <v-list-item-avatar>
++          <v-icon class="grey">
++            mdi-earth
++          </v-icon>
++        </v-list-item-avatar>
++
++        <div>
++          <p
++            class="text-body-1 ma-0"
++            v-text="release.version"
++          />
++          <p
++            class="text-caption text--secondary ma-0"
++            v-text="subtitle"
++          />
++          <p
++            v-if="settings.is_pirate_mode"
++            class="text-caption text--secondary ma-0"
++            v-text="release.toplevel"
++          />
++        </div>
++      </div>
++      <v-spacer />
++      <div class="d-flex flex-wrap justify-center align-center my-2">
++        <v-btn
++          v-if="showDocsLink"
++          v-tooltip="t`Documentation for this version`"
++          icon
++          :href="docsUrl"
++          target="_blank"
++          rel="noopener noreferrer"
++        >
++          <v-icon>mdi-book-open-variant</v-icon>
++        </v-btn>
++        <v-btn
++          v-if="showReleaseNotes && !notesExpanded"
++          key="show-notes"
++          class="mx-2 my-1"
++          text
++          @click="notesExpanded = true"
++        >
++          <v-icon left>
++            mdi-list-box-outline
++          </v-icon>
++          {{ t`What's new?` }}
++        </v-btn>
++        <v-alert
++          v-if="installed"
++          class="mx-2 my-1"
++          dense
++          text
++          type="success"
++        >
++          {{ t`Downloaded` }}
++        </v-alert>
++        <v-btn
++          v-if="!installed && settings.is_pirate_mode"
++          class="mx-2 my-1"
++          text
++          :disabled="working"
++          :loading="downloading"
++          @click="$emit('download')"
++          v-text="t`Download only`"
++        />
++        <v-btn
++          v-if="showUpgrade"
++          color="primary"
++          class="mx-2 my-1"
++          :disabled="working"
++          :loading="activating"
++          @click="$emit('activate', 'boot')"
++          v-text="`${t`Upgrade to`} ${release.version}`"
++        />
++        <v-btn
++          v-if="showInstall"
++          color="primary"
++          class="mx-2 my-1"
++          :disabled="working"
++          :loading="activating"
++          @click="$emit('activate', 'boot')"
++          v-text="t`Download and install`"
++        />
++        <v-btn
++          v-if="showReleaseNotes && notesExpanded"
++          key="hide-notes"
++          v-tooltip="t`Hide release notes`"
++          icon
++          @click="notesExpanded = false"
++        >
++          <v-icon>mdi-chevron-up</v-icon>
++        </v-btn>
++      </div>
++    </div>
++    <release-notes
++      v-if="showReleaseNotes && notesExpanded"
++      :key="release.version"
++      class="pb-4"
++      :version="release.version"
++    />
++  </v-sheet>
++</template>
++
++<script lang="ts">
++import { formatDistanceToNow } from 'date-fns'
++import Vue, { PropType } from 'vue'
++
++import settings from '@/libs/settings'
++import helper from '@/store/helper'
++import { InternetConnectionState } from '@/types/helper'
++import { Release } from '@/types/version-chooser-nixos'
++import { getDocsUrl, isSemVer } from '@/utils/version_chooser_nixos'
++
++import ReleaseNotes from './ReleaseNotesNixos.vue'
++
++export default Vue.extend({
++  name: 'ReleaseCard',
++  components: {
++    ReleaseNotes,
++  },
++  props: {
++    release: {
++      type: Object as PropType<Release>,
++      required: true,
++    },
++    latestStable: {
++      type: String,
++      default: '',
++    },
++    /** Whether this exact closure is already in the local store. */
++    installed: {
++      type: Boolean,
++      default: false,
++    },
++    /** Whether this is the newest release of its line, so it is worth offering. */
++    upgrade: {
++      type: Boolean,
++      default: false,
++    },
++    activating: {
++      type: Boolean,
++      default: false,
++    },
++    downloading: {
++      type: Boolean,
++      default: false,
++    },
++  },
++  data() {
++    return {
++      settings,
++      notesExpanded: false,
++    }
++  },
++  computed: {
++    working(): boolean {
++      return this.activating || this.downloading
++    },
++    hasInternet(): boolean {
++      return helper.has_internet !== InternetConnectionState.OFFLINE
++        && helper.has_internet !== InternetConnectionState.UNKNOWN
++    },
++    showReleaseNotes(): boolean {
++      return this.hasInternet && isSemVer(this.release.version)
++    },
++    showDocsLink(): boolean {
++      return isSemVer(this.release.version) || this.release.version === 'master'
++    },
++    docsUrl(): string {
++      return getDocsUrl(this.release.version, this.latestStable)
++    },
++    showUpgrade(): boolean {
++      return this.upgrade && !this.installed
++    },
++    showInstall(): boolean {
++      return !this.upgrade && !this.installed
++    },
++    subtitle(): string {
++      const parts = [this.release.channel || t`published`]
++      if (this.release.published) {
++        parts.push(`${formatDistanceToNow(new Date(Date.parse(this.release.published)))} ${t`ago`}`)
++      }
++      if (this.release.revision) {
++        parts.push(this.release.revision.slice(0, 7))
++      }
++      return parts.join(' - ')
++    },
++  },
++})
++</script>
+diff --git a/core/frontend/src/components/version-chooser/ReleaseNotesNixos.vue b/core/frontend/src/components/version-chooser/ReleaseNotesNixos.vue
+new file mode 100644
+index 0000000000..18f6cb44df
+--- /dev/null
++++ b/core/frontend/src/components/version-chooser/ReleaseNotesNixos.vue
+@@ -0,0 +1,65 @@
++<template>
++  <div>
++    <v-progress-circular
++      v-if="loading"
++      indeterminate
++      size="24"
++      color="primary"
++    />
++    <div v-else-if="notes">
++      <!-- Rendered and sanitized by GitHub itself, which is what the release page serves -->
++      <!-- eslint-disable vue/no-v-html -->
++      <div
++        class="release-notes"
++        v-html="notes.html"
++      />
++      <!-- eslint-enable vue/no-v-html -->
++    </div>
++    <p
++      v-else
++      class="text-caption text--secondary ma-0"
++    >
++      {{ t`Release notes are not available for this version.` }}
++    </p>
++  </div>
++</template>
++
++<script lang="ts">
++import Vue from 'vue'
++
++import { ReleaseNotes } from '@/types/version-chooser'
++import { getReleaseNotes } from '@/utils/version_chooser_nixos'
++
++export default Vue.extend({
++  name: 'ReleaseNotesNixos',
++  props: {
++    version: {
++      type: String,
++      required: true,
++    },
++  },
++  data() {
++    return {
++      notes: undefined as (undefined | ReleaseNotes),
++      loading: true,
++    }
++  },
++  async mounted() {
++    this.notes = await getReleaseNotes(this.version)
++    this.loading = false
++  },
++})
++</script>
++
++<style scoped>
++.release-notes ::v-deep h1,
++.release-notes ::v-deep h2,
++.release-notes ::v-deep h3 {
++  font-size: 1.1rem;
++  margin-top: 10px;
++}
++
++.release-notes ::v-deep ul {
++  margin-bottom: 10px;
++}
++</style>
+diff --git a/core/frontend/src/components/version-chooser/VersionChooserNixos.vue b/core/frontend/src/components/version-chooser/VersionChooserNixos.vue
+new file mode 100644
+index 0000000000..d78943f41d
+--- /dev/null
++++ b/core/frontend/src/components/version-chooser/VersionChooserNixos.vue
+@@ -0,0 +1,554 @@
++<template>
++  <v-container>
++    <v-col
++      max-width="1000"
++      class="mx-auto"
++    >
++      <v-card
++        max-width="900"
++        class="mx-auto my-12 pa-4"
++      >
++        <h2>{{ t`Current Version` }}</h2>
++        <generation-card
++          v-if="status"
++          :generation="status.current"
++          :latest-stable="latest_stable"
++          :activating="activating === status.current.generation"
++        />
++        <spinning-logo
++          v-else
++          size="15%"
++          :subtitle="t`Loading the running version...`"
++        />
++
++        <v-alert
++          v-if="status?.installed"
++          class="mt-4"
++          border="top"
++          colored-border
++          type="warning"
++          elevation="2"
++        >
++          <div class="d-flex align-center justify-space-between">
++            <span>
++              <!-- eslint-disable-next-line max-len -->
++              {{ t`${status.installed.version} is installed but not running: the machine has to reboot to boot into it.` }}
++            </span>
++            <v-btn
++              color="warning"
++              dark
++              small
++              :disabled="waiting"
++              @click="rebootRequired()"
++            >
++              {{ t`Reboot` }}
++            </v-btn>
++          </div>
++        </v-alert>
++
++        <v-alert
++          v-if="status?.pending"
++          class="mt-4"
++          border="top"
++          colored-border
++          type="info"
++          elevation="2"
++        >
++          <!-- eslint-disable-next-line max-len -->
++          {{ t`Monitoring this version. It is confirmed automatically once its services are up, and the vehicle returns to ${knownGoodLabel} on its own if it does not become healthy.` }}
++        </v-alert>
++
++        <v-alert
++          v-if="status?.rolled_back_from"
++          class="mt-4"
++          border="top"
++          colored-border
++          type="error"
++          elevation="2"
++          dismissible
++        >
++          <div class="d-flex align-center justify-space-between">
++            <span>
++              <!-- eslint-disable-next-line max-len -->
++              {{ t`The last update did not pass its health check, so the vehicle rolled back to ${status.current.version}. See` }}
++              <a href="#" @click.prevent="showRollbackDetails = !showRollbackDetails">{{ t`details` }}</a>.
++            </span>
++            <v-btn
++              color="warning"
++              dark
++              small
++              :loading="loading"
++              :disabled="loading"
++              @click="refresh()"
++            >
++              {{ t`Retry` }}
++            </v-btn>
++          </div>
++          <p
++            v-if="showRollbackDetails"
++            class="text-caption ma-0 mt-2"
++          >
++            <!-- eslint-disable-next-line max-len -->
++            {{ t`The failed generation was ${status.rolled_back_from}. It is still installed, so it can be inspected or deleted below.` }}
++          </p>
++        </v-alert>
++
++        <v-alert
++          v-if="latest_version"
++          class="mt-4"
++          border="top"
++          colored-border
++          type="info"
++          elevation="2"
++        >
++          <div class="d-flex align-center justify-space-between">
++            <span>{{ t`BlueOS ${latest_version.version} is available.` }}</span>
++            <v-btn
++              color="primary"
++              :disabled="working"
++              :loading="activating === null && upgrading"
++              @click="install(latest_version)"
++            >
++              {{ t`Update to ${latest_version.version}` }}
++            </v-btn>
++          </div>
++        </v-alert>
++
++        <v-alert
++          v-if="releases_error"
++          class="mt-4"
++          color="red lighten-2"
++          dark
++        >
++          <div class="d-flex align-center justify-space-between">
++            <span>{{ releases_error }}</span>
++            <v-btn
++              color="warning"
++              dark
++              small
++              :loading="loading"
++              :disabled="loading"
++              @click="loadReleases"
++            >
++              {{ t`Retry` }}
++            </v-btn>
++          </div>
++        </v-alert>
++      </v-card>
++
++      <v-card
++        max-width="900"
++        class="mx-auto my-12 pa-4"
++      >
++        <div class="d-flex justify-space-between pb-3">
++          <h2>{{ t`Installed Versions` }}</h2>
++          <v-btn
++            icon
++            :loading="loading"
++            :disabled="loading"
++            @click="refresh()"
++          >
++            <v-icon>mdi-refresh</v-icon>
++          </v-btn>
++        </div>
++        <p class="text-caption text--secondary">
++          <!-- eslint-disable-next-line max-len -->
++          {{ t`Every version installed on this card. Switching back to an older one is a rollback you ask for, unlike the automatic one, which only happens when an update fails.` }}
++        </p>
++        <generation-card
++          v-for="generation in generations"
++          :key="generation.generation"
++          :generation="generation"
++          :latest-stable="latest_stable"
++          :activating="activating === generation.generation"
++          :deleting="deleting === generation.generation"
++          :can-delete="canDelete(generation)"
++          @activate="activate(generation, $event)"
++          @delete="deleteGeneration(generation)"
++        />
++        <spinning-logo
++          v-if="loading && generations.length === 0"
++          size="15%"
++          :subtitle="t`Loading installed versions...`"
++        />
++      </v-card>
++
++      <v-card
++        max-width="900"
++        class="mx-auto my-12 pa-4"
++      >
++        <h2>{{ t`Available Versions` }}</h2>
++        <p
++          v-if="!settings.is_pirate_mode"
++          class="text-caption text--secondary"
++        >
++          {{ t`Turn on Pirate mode to see every published version, including beta and development builds.` }}
++        </p>
++        <p
++          v-else
++          class="text-caption text--secondary"
++        >
++          <!-- eslint-disable-next-line max-len -->
++          {{ t`Versions published for this board. Updating downloads the build and installs it for the next boot; if it does not come up healthy, the vehicle returns to the running version.` }}
++        </p>
++        <release-card
++          v-for="release in visible_releases"
++          :key="release.toplevel"
++          :release="release"
++          :latest-stable="latest_stable"
++          :installed="isInstalled(release)"
++          :upgrade="latest_version?.toplevel === release.toplevel"
++          :activating="activating_release === release.version"
++          :downloading="downloading_release === release.version"
++          @activate="install(release)"
++          @download="download(release)"
++        />
++        <spinning-logo
++          v-if="loading && releases.length === 0"
++          size="15%"
++          :subtitle="t`Loading available versions...`"
++        />
++        <p
++          v-else-if="!loading && releases.length === 0 && !releases_error"
++          class="text-caption text--secondary"
++        >
++          <!-- eslint-disable-next-line max-len -->
++          {{ t`This vehicle was built without a release manifest, so there is nothing to download. Versions can still be deployed with nixos-rebuild or deploy-rs, which are protected by the same rollback.` }}
++        </p>
++      </v-card>
++    </v-col>
++    <v-overlay
++      :z-index="10"
++      :value="waiting"
++    >
++      <spinning-logo
++        size="100%"
++        :subtitle="waiting_text"
++      />
++    </v-overlay>
++  </v-container>
++</template>
++
++<script lang="ts">
++import Vue from 'vue'
++
++import Notifier from '@/libs/notifier'
++import settings from '@/libs/settings'
++import commander from '@/store/commander'
++import { ShutdownType } from '@/types/commander'
++import { version_chooser_service } from '@/types/frontend_services'
++import {
++  ActivationMode, ActivationResponse, Generation, Release, Status,
++} from '@/types/version-chooser-nixos'
++import { isBackendOffline } from '@/utils/api'
++import * as VCU from '@/utils/version_chooser_nixos'
++
++import SpinningLogo from '../common/SpinningLogo.vue'
++import GenerationCard from './GenerationCard.vue'
++import ReleaseCard from './ReleaseCard.vue'
++
++const notifier = new Notifier(version_chooser_service)
++
++/**
++ * The daemon activates a generation by restarting the services that changed, so
++ * the backend goes away for a moment. Waiting for it to answer again is what
++ * tells the user the update actually landed, rather than reloading into a
++ * half-restarted system.
++ */
++const BACKEND_OFFLINE_TIMEOUT_MS = 20000
++const BACKEND_ONLINE_TIMEOUT_MS = 120000
++/** A switch restarts every service, so it is given the same window the daemon
++ * allows it before giving up. */
++const ACTIVATION_TIMEOUT_MS = 5 * 60 * 1000
++const POLL_INTERVAL_MS = 1000
++
++export default Vue.extend({
++  name: 'VersionChooserNixos',
++  components: {
++    GenerationCard,
++    ReleaseCard,
++    SpinningLogo,
++  },
++  data() {
++    return {
++      settings,
++      status: null as (null | Status),
++      generations: [] as Generation[],
++      releases: [] as Release[],
++      releases_error: null as (null | string),
++      loading: false,
++      waiting: false,
++      waiting_text: '',
++      activating: null as (null | number),
++      activating_release: null as (null | string),
++      downloading_release: null as (null | string),
++      deleting: null as (null | number),
++      upgrading: false,
++      showRollbackDetails: false,
++    }
++  },
++  computed: {
++    working(): boolean {
++      return this.loading || this.waiting
++        || this.activating !== null
++        || this.activating_release !== null
++        || this.downloading_release !== null
++    },
++    latest_stable(): string {
++      return VCU.latestRelease(this.releases, false)?.version ?? ''
++    },
++    latest_version(): Release | undefined {
++      if (!this.status) {
++        return undefined
++      }
++      return VCU.getAvailableUpdate(this.status.current.version, this.releases)
++    },
++    /** Without pirate mode only the newest stable build is offered. */
++    visible_releases(): Release[] {
++      const sorted = VCU.sortReleases(this.releases)
++      if (this.settings.is_pirate_mode) {
++        return sorted.slice(0, 10)
++      }
++      const stable = sorted.filter((release) => VCU.isSemVer(release.version)
++        && !VCU.isPreRelease(release.version))
++      return stable.slice(0, 1)
++    },
++    knownGoodLabel(): string {
++      return this.status?.known_good?.generation
++        ? `${t`generation`} ${this.status.known_good.generation}`
++        : t`the last version that worked`
++    },
++  },
++  mounted() {
++    this.refresh()
++  },
++  methods: {
++    /**
++     * The status endpoint is also how the frontend finds out whether the backend
++     * is up at all, so it is polled directly: `back_axios` would treat the
++     * restart as an offline backend and reject every call for a while.
++     */
++    async backendIsOnline(): Promise<boolean> {
++      return fetch('/updates/v1.0/status', { method: 'GET' })
++        .then((response) => response.ok)
++        .catch(() => false)
++    },
++
++    async waitForBackend(offline_first: boolean): Promise<void> {
++      const deadline = Date.now() + (offline_first ? BACKEND_OFFLINE_TIMEOUT_MS : BACKEND_ONLINE_TIMEOUT_MS)
++      const want_online = !offline_first
++
++      while (Date.now() < deadline) {
++        // eslint-disable-next-line no-await-in-loop
++        const online = await this.backendIsOnline()
++        if (online === want_online) {
++          return
++        }
++        // eslint-disable-next-line no-await-in-loop
++        await new Promise((resolve) => { setTimeout(resolve, POLL_INTERVAL_MS) })
++      }
++      throw new Error('the update daemon did not come back in time')
++    },
++
++    async refresh(): Promise<void> {
++      this.loading = true
++      await Promise.all([this.loadStatus(), this.loadGenerations(), this.loadReleases()])
++      this.loading = false
++    },
++
++    async loadStatus(): Promise<void> {
++      await VCU.loadStatus()
++        .then((status) => { this.status = status })
++        .catch((error) => {
++          if (isBackendOffline(error)) {
++            return
++          }
++          const message = `${t`Could not read the update status:`} ${VCU.describeError(error)}`
++          notifier.pushError('VERSION_CHOOSER_STATUS_FAIL', message)
++        })
++    },
++
++    async loadGenerations(): Promise<void> {
++      await VCU.loadGenerations()
++        .then((generations) => { this.generations = generations })
++        .catch((error) => {
++          if (isBackendOffline(error)) {
++            return
++          }
++          const message = `${t`Could not list the installed versions:`} ${VCU.describeError(error)}`
++          notifier.pushError('VERSION_CHOOSER_GENERATIONS_FAIL', message)
++        })
++    },
++
++    async loadReleases(): Promise<void> {
++      await VCU.loadReleases()
++        .then((response) => {
++          this.releases = response.releases
++          this.releases_error = response.error
++        })
++        .catch((error) => {
++          if (isBackendOffline(error)) {
++            return
++          }
++          this.releases_error = VCU.describeError(error)
++        })
++    },
++
++    async activate(generation: Generation, mode: ActivationMode): Promise<void> {
++      this.activating = generation.generation
++      this.waiting = true
++      this.waiting_text = mode === 'boot'
++        ? `${t`Installing`} ${generation.version}...`
++        : `${t`Switching to`} ${generation.version}...`
++      try {
++        const outcome = await VCU.activateGeneration(generation.generation, mode)
++        // `boot` leaves the running system alone, so there is nothing to wait
++        // for: the generation only takes over at the next reboot.
++        if (!outcome.reboot_required) {
++          this.waiting_text = t`Waiting for the switch to finish...`
++          await this.waitForActivation(outcome, generation.version)
++          window.location.reload()
++          return
++        }
++        notifier.pushSuccess(
++          'VERSION_CHOOSER_ACTIVATE_SUCCESS',
++          `${generation.version} ${t`is installed. Reboot to boot into it.`}`,
++          true,
++        )
++      } catch (error) {
++        notifier.pushError(
++          'VERSION_CHOOSER_ACTIVATE_FAIL',
++          `${t`Could not switch to`} ${generation.version}: ${VCU.describeError(error)}`,
++          true,
++        )
++      } finally {
++        this.activating = null
++        this.waiting = false
++        await this.refresh()
++      }
++    },
++
++    /**
++     * The daemon answers an activation with 202 and then gets restarted by the
++     * switch it started, so there is no response left to read the outcome from.
++     * Polling `/status` is, and it ends when the generation we asked for is what
++     * is running. Waiting for the daemon to go away first would race: a fast
++     * switch can finish before a poll ever observes it offline.
++     */
++    async waitForActivation(outcome: ActivationResponse, label: string): Promise<void> {
++      const deadline = Date.now() + ACTIVATION_TIMEOUT_MS
++
++      while (Date.now() < deadline) {
++        // eslint-disable-next-line no-await-in-loop
++        const status = await VCU.loadStatus().catch(() => undefined)
++        if (status?.current.toplevel === outcome.toplevel) {
++          return
++        }
++        // eslint-disable-next-line no-await-in-loop
++        await new Promise((resolve) => { setTimeout(resolve, POLL_INTERVAL_MS) })
++      }
++
++      // The daemon is back but still reports the old generation, so the switch
++      // failed after it started. Its output is the only account of why.
++      const status = await VCU.loadStatus().catch(() => undefined)
++      const detail = status?.last_switch_log ?? t`no output was recorded`
++      throw new Error(`${label} ${t`did not start within the deadline:`} ${detail}`)
++    },
++
++    async install(release: Release): Promise<void> {
++      this.activating_release = release.version
++      this.waiting = true
++      this.waiting_text = `${t`Downloading`} ${release.version}...`
++      try {
++        await VCU.activateRelease(release.version, 'boot')
++        notifier.pushSuccess(
++          'VERSION_CHOOSER_INSTALL_SUCCESS',
++          `${release.version} ${t`is installed. Reboot to boot into it.`}`,
++          true,
++        )
++        await this.refresh()
++      } catch (error) {
++        notifier.pushError(
++          'VERSION_CHOOSER_INSTALL_FAIL',
++          `${t`Could not install`} ${release.version}: ${VCU.describeError(error)}`,
++          true,
++        )
++      } finally {
++        this.activating_release = null
++        this.waiting = false
++      }
++    },
++
++    async download(release: Release): Promise<void> {
++      this.downloading_release = release.version
++      try {
++        await VCU.downloadRelease(release.version)
++        notifier.pushSuccess(
++          'VERSION_CHOOSER_DOWNLOAD_SUCCESS',
++          `${release.version} ${t`is downloaded and can be installed without internet.`}`,
++        )
++        await this.refresh()
++      } catch (error) {
++        notifier.pushError(
++          'VERSION_CHOOSER_DOWNLOAD_FAIL',
++          `${t`Could not download`} ${release.version}: ${VCU.describeError(error)}`,
++          true,
++        )
++      } finally {
++        this.downloading_release = null
++      }
++    },
++
++    async deleteGeneration(generation: Generation): Promise<void> {
++      const label = `${generation.version} (${t`generation`} ${generation.generation})`
++      if (!window.confirm(`${t`Delete`} ${label}? ${t`The build can be downloaded again if it is published.`}`)) {
++        return
++      }
++      this.deleting = generation.generation
++      try {
++        await VCU.deleteGeneration(generation.generation)
++        notifier.pushSuccess('VERSION_CHOOSER_DELETE_SUCCESS', `${t`Deleted`} ${label}.`)
++        await this.refresh()
++      } catch (error) {
++        notifier.pushError(
++          'VERSION_CHOOSER_DELETE_FAIL',
++          `${t`Could not delete`} ${label}: ${VCU.describeError(error)}`,
++          true,
++        )
++      } finally {
++        this.deleting = null
++      }
++    },
++
++    /**
++     * The daemon refuses to delete the running generation and the rollback
++     * target, so the button is only offered where it can succeed.
++     */
++    canDelete(generation: Generation): boolean {
++      return !generation.current && !generation.known_good
++    },
++
++    isInstalled(release: Release): boolean {
++      return this.generations.some((generation) => generation.toplevel === release.toplevel)
++    },
++
++    async rebootRequired(): Promise<void> {
++      this.waiting = true
++      this.waiting_text = t`Waiting for the vehicle to reboot...`
++      await commander.shutdown(ShutdownType.Reboot)
++      try {
++        await this.waitForBackend(true)
++        await this.waitForBackend(false)
++        window.location.reload()
++      } catch (error) {
++        notifier.pushError(
++          'VERSION_CHOOSER_REBOOT_FAIL',
++          `${t`The vehicle did not come back in time:`} ${VCU.describeError(error)}`,
++          true,
++        )
++        this.waiting = false
++      }
++    },
++  },
++})
++</script>
+diff --git a/core/frontend/src/i18n/en.po b/core/frontend/src/i18n/en.po
+index 2a1a3b099b..af3ce786ba 100644
+--- a/core/frontend/src/i18n/en.po
++++ b/core/frontend/src/i18n/en.po
+@@ -44,6 +44,13 @@ msgstr ""
+ msgid "${ 0 } installed successfully."
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++#, javascript-format
++msgid ""
++"${ 0 } is installed but not running: the machine has to reboot to boot into "
++"it."
++msgstr ""
++
+ #: src/components/vehiclesetup/configuration/lights.vue
+ #, javascript-format
+ msgid "${ 0 } steps result in a ${ 1 }% increase per button press."
+@@ -162,6 +169,7 @@ msgid ""
+ msgstr ""
+ 
+ #: src/components/app/NewVersionNotificator.vue
++#: src/components/app/NewVersionNotificatorNixos.vue
+ msgid "A new version is available!"
+ msgstr ""
+ 
+@@ -404,6 +412,10 @@ msgstr ""
+ msgid "Available Services"
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "Available Versions"
++msgstr ""
++
+ #: src/views/ExtensionManagerView.vue
+ msgid "Back Alley"
+ msgstr ""
+@@ -478,6 +490,11 @@ msgstr ""
+ msgid "Better visibility in bright environments"
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++#, javascript-format
++msgid "BlueOS ${ 0 } is available."
++msgstr ""
++
+ #: src/components/vehiclesetup/viewers/GenericViewer.vue
+ msgid "BlueOS Documentation"
+ msgstr ""
+@@ -514,6 +531,10 @@ msgstr ""
+ msgid "Boat Setup"
+ msgstr ""
+ 
++#: src/components/version-chooser/GenerationCard.vue
++msgid "Boot into"
++msgstr ""
++
+ #: src/components/system-information/Firmware.vue
+ msgid "Bootloader Version"
+ msgstr ""
+@@ -940,6 +961,30 @@ msgstr ""
+ msgid "Core container is restarting, please wait."
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "Could not delete"
++msgstr ""
++
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "Could not download"
++msgstr ""
++
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "Could not install"
++msgstr ""
++
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "Could not list the installed versions:"
++msgstr ""
++
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "Could not read the update status:"
++msgstr ""
++
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "Could not switch to"
++msgstr ""
++
+ #: src/components/bridges/BridgeCreationDialog.vue
+ #: src/components/ethernet/AddressCreationDialog.vue
+ #: src/components/kraken/modals/ExtensionCreationModal.vue
+@@ -983,6 +1028,7 @@ msgid "Current Pin:"
+ msgstr ""
+ 
+ #: src/components/version-chooser/VersionChooser.vue
++#: src/components/version-chooser/VersionChooserNixos.vue
+ msgid "Current Version"
+ msgstr ""
+ 
+@@ -1050,7 +1096,9 @@ msgstr ""
+ msgid "Decompressing file, this usually takes up to one minute, please stand by..."
+ msgstr ""
+ 
++#: src/components/version-chooser/GenerationCard.vue
+ #: src/components/version-chooser/VersionCard.vue
++#: src/components/version-chooser/VersionChooserNixos.vue
+ msgid "Delete"
+ msgstr ""
+ 
+@@ -1062,6 +1110,10 @@ msgstr ""
+ msgid "Delete selected logs"
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "Deleted"
++msgstr ""
++
+ #: src/views/SettingsView.vue
+ msgid "Deleting:"
+ msgstr ""
+@@ -1197,6 +1249,8 @@ msgstr ""
+ msgid "Docker Login"
+ msgstr ""
+ 
++#: src/components/version-chooser/GenerationCard.vue
++#: src/components/version-chooser/ReleaseCard.vue
+ #: src/components/version-chooser/VersionCard.vue
+ msgid "Documentation for this version"
+ msgstr ""
+@@ -1221,6 +1275,10 @@ msgstr ""
+ msgid "Download and Apply"
+ msgstr ""
+ 
++#: src/components/version-chooser/ReleaseCard.vue
++msgid "Download and install"
++msgstr ""
++
+ #: src/components/logs/LogManager.vue
+ msgid "Download log"
+ msgstr ""
+@@ -1229,6 +1287,10 @@ msgstr ""
+ msgid "Download logs for all BlueOS services"
+ msgstr ""
+ 
++#: src/components/version-chooser/ReleaseCard.vue
++msgid "Download only"
++msgstr ""
++
+ #: src/components/logs/LogManager.vue
+ msgid "Download selected logs"
+ msgstr ""
+@@ -1241,6 +1303,14 @@ msgstr ""
+ msgid "Download speed from vehicle"
+ msgstr ""
+ 
++#: src/components/version-chooser/ReleaseCard.vue
++msgid "Downloaded"
++msgstr ""
++
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "Downloading"
++msgstr ""
++
+ #: src/components/utils/PullProgress.vue
+ #, javascript-format
+ msgid "Downloading: ${ 0 }%"
+@@ -1375,6 +1445,13 @@ msgstr ""
+ msgid "Event log"
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid ""
++"Every version installed on this card. Switching back to an older one is a "
++"rollback you ask for, unlike the automatic one, which only happens when an "
++"update fails."
++msgstr ""
++
+ #: src/components/system-information/Processes.vue
+ msgid "Executable path"
+ msgstr ""
+@@ -1591,6 +1668,10 @@ msgstr ""
+ msgid "GPIO Function:"
+ msgstr ""
+ 
++#: src/components/version-chooser/GenerationCard.vue
++msgid "Generation"
++msgstr ""
++
+ #: src/components/vehiclesetup/configuration/compass/AutoCoordinateDetector.vue
+ msgid "GeoIP coordinates are estimated based on your IP address."
+ msgstr ""
+@@ -1635,6 +1716,8 @@ msgstr ""
+ msgid "Hide"
+ msgstr ""
+ 
++#: src/components/version-chooser/GenerationCard.vue
++#: src/components/version-chooser/ReleaseCard.vue
+ #: src/components/version-chooser/VersionCard.vue
+ msgid "Hide release notes"
+ msgstr ""
+@@ -1789,6 +1872,10 @@ msgstr ""
+ msgid "Install from file"
+ msgstr ""
+ 
++#: src/components/version-chooser/GenerationCard.vue
++msgid "Install it and reboot into it"
++msgstr ""
++
+ #: src/components/wizard/Wizard.vue
+ msgid "Install scripts"
+ msgstr ""
+@@ -1805,6 +1892,14 @@ msgstr ""
+ msgid "Installed"
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "Installed Versions"
++msgstr ""
++
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "Installing"
++msgstr ""
++
+ #: src/components/autopilot/FirmwareManager.vue
+ msgid "Installing firmware. Please wait."
+ msgstr ""
+@@ -2169,6 +2264,14 @@ msgstr ""
+ msgid "Modified"
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++#, javascript-format
++msgid ""
++"Monitoring this version. It is confirmed automatically once its services "
++"are up, and the vehicle returns to ${ 0 } on its own if it does not become "
++"healthy."
++msgstr ""
++
+ #: src/components/vehiclesetup/PwmSetup.vue
+ msgid "Motor Test"
+ msgstr ""
+@@ -2857,6 +2960,7 @@ msgstr ""
+ 
+ #: src/components/app/PowerMenu.vue
+ #: src/components/autopilot/FirmwareManager.vue
++#: src/components/version-chooser/VersionChooserNixos.vue
+ #: src/views/SettingsView.vue
+ msgid "Reboot"
+ msgstr ""
+@@ -2900,6 +3004,7 @@ msgid "Relay On"
+ msgstr ""
+ 
+ #: src/components/version-chooser/ReleaseNotes.vue
++#: src/components/version-chooser/ReleaseNotesNixos.vue
+ msgid "Release notes are not available for this version."
+ msgstr ""
+ 
+@@ -3027,6 +3132,7 @@ msgid "Retrieve from Cloud"
+ msgstr ""
+ 
+ #: src/components/version-chooser/VersionChooser.vue
++#: src/components/version-chooser/VersionChooserNixos.vue
+ #: src/components/wizard/Wizard.vue
+ msgid "Retry"
+ msgstr ""
+@@ -3053,6 +3159,10 @@ msgstr ""
+ msgid "Roll: ${ 0 }°"
+ msgstr ""
+ 
++#: src/components/version-chooser/GenerationCard.vue
++msgid "Rollback target"
++msgstr ""
++
+ #: src/components/system-information/Processes.vue
+ msgid "Root directory"
+ msgstr ""
+@@ -3066,6 +3176,7 @@ msgstr ""
+ msgid "Run Wizard"
+ msgstr ""
+ 
++#: src/components/version-chooser/GenerationCard.vue
+ #: src/components/version-chooser/VersionCard.vue
+ msgid "Running"
+ msgstr ""
+@@ -3532,11 +3643,19 @@ msgstr ""
+ msgid "Successfully updated smart-hotspot configuration."
+ msgstr ""
+ 
++#: src/components/version-chooser/GenerationCard.vue
++msgid "Switch to"
++msgstr ""
++
+ #: src/components/beacon/BeaconTrayMenu.vue
+ #, javascript-format
+ msgid "Switch to ${ 0 }.local"
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "Switching to"
++msgstr ""
++
+ #: src/views/SettingsView.vue
+ msgid "System"
+ msgstr ""
+@@ -3632,6 +3751,10 @@ msgid ""
+ "is currently ${ 1 }. Reboot the autopilot after changing the parameter."
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "The build can be downloaded again if it is published."
++msgstr ""
++
+ #: src/components/vehiclesetup/configuration/compass/ArdupilotMavlinkCompassSetup.vue
+ msgid "The compass is not calibrated - please calibrate it."
+ msgstr ""
+@@ -3643,10 +3766,38 @@ msgid ""
+ "Installing it might result in the extension failing to load."
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++#, javascript-format
++msgid ""
++"The failed generation was ${ 0 }. It is still installed, so it can be "
++"inspected or deleted below."
++msgstr ""
++
+ #: src/components/vehiclesetup/configuration/camera.vue
+ msgid "The gimbal will move to the new PWM values as you adjust them."
+ msgstr ""
+ 
++#: src/components/health/SelfHealthTestNixos.vue
++#, javascript-format
++msgid ""
++"The last BlueOS update did not become healthy, so the vehicle returned to "
++"${ 0 } by itself. The failed version is still installed and can be "
++"inspected in the <a href='/tools/version-chooser'>version chooser</a>. "
++"Please file an issue at <a "
++"href='https://github.com/bluerobotics/BlueOS/issues' "
++"target='_blank'>BlueOS/issues</a> or post on our <a "
++"href='https://discuss.bluerobotics.com/c/bluerobotics-software/blue-os/85' "
++"target='_blank'>forum</a>. Please include the <a href='#' "
++"class='js-download-logs'>System logs</a> if possible."
++msgstr ""
++
++#: src/components/version-chooser/VersionChooserNixos.vue
++#, javascript-format
++msgid ""
++"The last update did not pass its health check, so the vehicle rolled back "
++"to ${ 0 }. See"
++msgstr ""
++
+ #: src/alerts/rules/network.ts
+ msgid ""
+ "The network link is working but domain names cannot be resolved. Check the "
+@@ -3677,6 +3828,10 @@ msgid ""
+ "be in calm water and far from walls and objects."
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "The vehicle did not come back in time:"
++msgstr ""
++
+ #: src/components/wizard/Wizard.vue
+ msgid ""
+ "The wizard will only show if BlueOS is updated and further configuration is "
+@@ -3787,6 +3942,13 @@ msgid ""
+ "doing when this happened."
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid ""
++"This vehicle was built without a release manifest, so there is nothing to "
++"download. Versions can still be deployed with nixos-rebuild or deploy-rs, "
++"which are protected by the same rollback."
++msgstr ""
++
+ #: src/components/kraken/modals/ExtensionDetailsModal.vue
+ msgid "This version is not compatible with current machine running BlueOS"
+ msgstr ""
+@@ -3888,6 +4050,12 @@ msgstr ""
+ msgid "Try to fetch DNS namservers from the host"
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid ""
++"Turn on Pirate mode to see every published version, including beta and "
++"development builds."
++msgstr ""
++
+ #: src/components/version-chooser/VersionChooser.vue
+ #, javascript-format
+ msgid ""
+@@ -3982,7 +4150,9 @@ msgid "Update time"
+ msgstr ""
+ 
+ #: src/components/app/NewVersionNotificator.vue
++#: src/components/app/NewVersionNotificatorNixos.vue
+ #: src/components/kraken/cards/InstalledExtensionCard.vue
++#: src/components/version-chooser/VersionChooserNixos.vue
+ #, javascript-format
+ msgid "Update to ${ 0 }"
+ msgstr ""
+@@ -3997,6 +4167,10 @@ msgstr ""
+ msgid "Update to latest ${ 0 }"
+ msgstr ""
+ 
++#: src/components/version-chooser/ReleaseCard.vue
++msgid "Upgrade to"
++msgstr ""
++
+ #: src/components/customization/BrandingUploader.vue
+ #: src/components/customization/ThemeCustomization.vue
+ #: src/components/version-chooser/VersionChooser.vue
+@@ -4186,6 +4360,13 @@ msgstr ""
+ msgid "Versions"
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid ""
++"Versions published for this board. Updating downloads the build and "
++"installs it for the next boot; if it does not come up healthy, the vehicle "
++"returns to the running version."
++msgstr ""
++
+ #: src/components/health/GpsTrayMenu.vue
+ msgid "Vertical Accuracy"
+ msgstr ""
+@@ -4271,6 +4452,14 @@ msgstr ""
+ msgid "Waiting for parameters.."
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "Waiting for the switch to finish..."
++msgstr ""
++
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "Waiting for the vehicle to reboot..."
++msgstr ""
++
+ #: src/components/cloud/CloudSyncStatusTab.vue
+ #, javascript-format
+ msgid "Waiting to upload • ${ 0 }"
+@@ -4298,6 +4487,8 @@ msgid ""
+ "can skip this wizard."
+ msgstr ""
+ 
++#: src/components/version-chooser/GenerationCard.vue
++#: src/components/version-chooser/ReleaseCard.vue
+ #: src/components/version-chooser/VersionCard.vue
+ msgid "What's new?"
+ msgstr ""
+@@ -4411,6 +4602,11 @@ msgstr ""
+ msgid "Zenoh Network"
+ msgstr ""
+ 
++#: src/components/version-chooser/GenerationCard.vue
++#: src/components/version-chooser/ReleaseCard.vue
++msgid "ago"
++msgstr ""
++
+ #: src/components/cloud/CloudSettingsTab.vue
+ msgid "already have a token"
+ msgstr ""
+@@ -4419,6 +4615,14 @@ msgstr ""
+ msgid "an automatically assigned port"
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "details"
++msgstr ""
++
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "did not start within the deadline:"
++msgstr ""
++
+ #: src/components/ethernet/InterfaceCard.vue
+ msgid "dynamic IP"
+ msgstr ""
+@@ -4431,6 +4635,10 @@ msgstr ""
+ msgid "fetching..."
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "generation"
++msgstr ""
++
+ #: src/components/vehiclesetup/MotorDetection.vue
+ msgid "incorrect frame selection"
+ msgstr ""
+@@ -4439,10 +4647,22 @@ msgstr ""
+ msgid "incorrect motor mapping"
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "is downloaded and can be installed without internet."
++msgstr ""
++
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "is installed. Reboot to boot into it."
++msgstr ""
++
+ #: src/components/vehiclesetup/MotorDetection.vue
+ msgid "no movement"
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "no output was recorded"
++msgstr ""
++
+ #: src/components/parameter-editor/ServoFunctionGpioEditor.vue
+ msgid "nothing"
+ msgstr ""
+@@ -4451,6 +4671,10 @@ msgstr ""
+ msgid "poor movement estimation"
+ msgstr ""
+ 
++#: src/components/version-chooser/ReleaseCard.vue
++msgid "published"
++msgstr ""
++
+ #: src/components/ethernet/InterfaceCard.vue
+ msgid "static IP"
+ msgstr ""
+@@ -4459,6 +4683,10 @@ msgstr ""
+ msgid "tab."
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "the last version that worked"
++msgstr ""
++
+ #: src/components/cloud/CloudSettingsTab.vue
+ msgid "want to change your token"
+ msgstr ""
+diff --git a/core/frontend/src/types/version-chooser-nixos.ts b/core/frontend/src/types/version-chooser-nixos.ts
+new file mode 100644
+index 0000000000..8a222fcb6e
+--- /dev/null
++++ b/core/frontend/src/types/version-chooser-nixos.ts
+@@ -0,0 +1,64 @@
++/**
++ * A BlueOS version is a NixOS generation. The update daemon reports the profile
++ * as it is, so these types mirror its JSON rather than the container images the
++ * version chooser deals in.
++ */
++export interface Generation {
++  generation: number,
++  /** Store path of the system closure. Two builds of one version differ here. */
++  toplevel: string,
++  version: string,
++  channel: string,
++  revision: string,
++  created: string,
++  current: boolean,
++  /** The last generation that booted and passed its health check. */
++  known_good: boolean,
++  /** Whether booting it needs a reboot before it takes effect. */
++  reboot_required: boolean,
++}
++
++export interface PendingActivation {
++  toplevel: string,
++  mode: ActivationMode,
++}
++
++export interface Status {
++  current: Generation,
++  known_good: (Generation | null),
++  /** What the profile points at, when it is not what is running: a reboot is owed. */
++  installed: (Generation | null),
++  /** An activation that has not confirmed itself yet, with a timer running. */
++  pending: (PendingActivation | null),
++  reboot_required: boolean,
++  /** The generation that failed and was rolled back away from, if the system did. */
++  rolled_back_from: (string | null),
++  /** Tail of the last activation's output, which runs detached from its request. */
++  last_switch_log: (string | null),
++}
++
++export interface Release {
++  board: string,
++  channel: string,
++  version: string,
++  revision: string,
++  toplevel: string,
++  published: (string | null),
++}
++
++export interface ReleasesResponse {
++  releases: Release[],
++  /** Why the list is empty, when it is empty because something failed. */
++  error: (string | null),
++}
++
++export interface ActivationResponse {
++  toplevel: string,
++  reboot_required: boolean,
++  message: string,
++  /** Where the detached switch writes its progress. */
++  log: string,
++}
++
++/** `switch` applies the generation now; `boot` installs it for the next boot. */
++export type ActivationMode = 'switch' | 'boot'
+diff --git a/core/frontend/src/utils/updates_backend.ts b/core/frontend/src/utils/updates_backend.ts
+new file mode 100644
+index 0000000000..301917ce94
+--- /dev/null
++++ b/core/frontend/src/utils/updates_backend.ts
+@@ -0,0 +1,10 @@
++/**
++ * Which update backend this frontend was built for.
++ *
++ * A NixOS build replaces the container version chooser with one backed by system
++ * generations. Both implementations are bundled and this only picks between
++ * them, so a change to the default does not require touching either one.
++ */
++const use_nixos_updates = import.meta.env.VITE_BLUEOS_UPDATES === 'nixos'
++
++export default use_nixos_updates
+diff --git a/core/frontend/src/utils/version_chooser.ts b/core/frontend/src/utils/version_chooser.ts
+index ed1d6628be..43fb63ed37 100644
+--- a/core/frontend/src/utils/version_chooser.ts
++++ b/core/frontend/src/utils/version_chooser.ts
+@@ -321,6 +321,13 @@ async function getFactoryVersion(): Promise<string> {
+   return response.data as string
+ }
+ 
++async function restartCore(): Promise<void> {
++  await back_axios({
++    method: 'post',
++    url: `${API_URL}/version/restart`,
++  })
++}
++
+ export {
+   commitVersion,
+   DEFAULT_REMOTE_IMAGE,
+@@ -340,6 +347,7 @@ export {
+   loadCurrentVersion,
+   loadLocalVersions,
+   nestVersions,
++  restartCore,
+   sortImages,
+   sortVersions,
+   getFactoryVersion,
+diff --git a/core/frontend/src/utils/version_chooser_nixos.ts b/core/frontend/src/utils/version_chooser_nixos.ts
+new file mode 100644
+index 0000000000..0373b444e5
+--- /dev/null
++++ b/core/frontend/src/utils/version_chooser_nixos.ts
+@@ -0,0 +1,255 @@
++import { gt as sem_ver_greater, parse as parse_sem_ver, SemVer } from 'semver'
++
++import { ReleaseNotes } from '@/types/version-chooser'
++import {
++  ActivationMode, ActivationResponse, Generation, Release, ReleasesResponse, Status,
++} from '@/types/version-chooser-nixos'
++import back_axios from '@/utils/api'
++import { fetchWithVehicleFallback } from '@/utils/helper_functions'
++
++const API_URL = '/updates/v1.0'
++const RELEASES_API_URL = 'https://api.github.com/repos/bluerobotics/BlueOS/releases'
++// GitHub's own render keeps the notes identical to the release page, pull request links included
++const RELEASE_NOTES_MEDIA_TYPE = 'application/vnd.github.html+json'
++const DOCS_URL = 'https://blueos.cloud/docs'
++
++function fixVersion(version: string): string | null {
++  /** It turned out that our semvers are wrong... oopss
++  This turns 1.0.0.beta12 into 1.0.0-beta.12
++  Additionally filters out tags with no '.' in it, which
++  can be improved
++  */
++  if (version.includes('.beta')) {
++    return version.replace('.beta', '-beta.')
++  }
++  if (!version.includes('.')) {
++    return null
++  }
++  return version
++}
++
++function toSemVer(version: string): SemVer | null {
++  const fixed_version = fixVersion(version)
++  return fixed_version === null ? null : parse_sem_ver(fixed_version)
++}
++
++function isSemVer(version: string): boolean {
++  // validates a version as SemVer compliant
++  return toSemVer(version) !== null
++}
++
++function isPreRelease(version: string): boolean {
++  const parsed = toSemVer(version)
++  return parsed !== null && parsed.prerelease.length > 0
++}
++
++/**
++ * Newest first. Anything that is not a version (`master`, branch builds) sorts
++ * last rather than dropping out: it is still an installable release.
++ */
++function sortReleases(releases: Release[]): Release[] {
++  return [...releases].sort((a, b) => {
++    const ver_a = toSemVer(a.version)
++    const ver_b = toSemVer(b.version)
++    if (ver_a === null || ver_b === null) {
++      return ver_a === null ? 1 : -1
++    }
++    return sem_ver_greater(ver_a, ver_b) ? -1 : 1
++  })
++}
++
++function latestRelease(releases: Release[], pre_release: boolean): Release | undefined {
++  return sortReleases(releases).find((release) => isSemVer(release.version)
++    && isPreRelease(release.version) === pre_release)
++}
++
++/**
++ * The release the vehicle should be offered. A vehicle on a pre-release stays on
++ * the pre-release line, which is what someone who opted into beta expects; one on
++ * a stable version is only offered stable builds.
++ * @param current_version - Version the running generation reports
++ */
++function getAvailableUpdate(current_version: string, releases: Release[]): Release | undefined {
++  const latest_stable = latestRelease(releases, false)
++  const latest_beta = latestRelease(releases, true)
++  const candidate = isPreRelease(current_version) ? latest_beta : latest_stable
++
++  if (candidate === undefined || candidate.version === current_version) {
++    return undefined
++  }
++  const current = toSemVer(current_version)
++  const offered = toSemVer(candidate.version)
++  if (current !== null && offered !== null && !sem_ver_greater(offered, current)) {
++    return undefined
++  }
++  return candidate
++}
++
++/**
++ * The docs site publishes one path per release line (`/docs/1.4/`) up to the current stable one.
++ * Pre-releases of a line that is not out yet, and anything that is not a 1.x+ version, are only
++ * covered by `/docs/latest/`.
++ */
++function getDocsUrl(version: string, latest_stable_version?: string): string {
++  const parsed = toSemVer(version)
++  if (parsed === null || parsed.major < 1) {
++    return `${DOCS_URL}/latest/`
++  }
++
++  const latest_stable = latest_stable_version ? toSemVer(latest_stable_version) : null
++  const release_line = new SemVer(`${parsed.major}.${parsed.minor}.0`)
++  const line_is_documented = latest_stable === null
++    ? parsed.prerelease.length === 0
++    : !sem_ver_greater(release_line, latest_stable)
++
++  return line_is_documented ? `${DOCS_URL}/${parsed.major}.${parsed.minor}/` : `${DOCS_URL}/latest/`
++}
++
++/**
++ * The daemon answers errors as `{ message }`, which is more useful than axios'
++ * generic text, so it is preferred when present.
++ */
++function describeError(error: unknown): string {
++  const candidate = error as { response?: { data?: { message?: string } }, message?: string }
++  return candidate?.response?.data?.message ?? candidate?.message ?? `${error}`
++}
++
++async function loadStatus(): Promise<Status> {
++  return back_axios({
++    method: 'get',
++    url: `${API_URL}/status`,
++  }).then((response) => response.data as Status)
++}
++
++async function loadGenerations(): Promise<Generation[]> {
++  return back_axios({
++    method: 'get',
++    url: `${API_URL}/generations`,
++  }).then((response) => response.data.generations as Generation[])
++}
++
++async function activateGeneration(generation: number, mode: ActivationMode): Promise<ActivationResponse> {
++  return back_axios({
++    method: 'post',
++    url: `${API_URL}/generations/${generation}/activate`,
++    params: { mode },
++  }).then((response) => response.data as ActivationResponse)
++}
++
++async function deleteGeneration(generation: number): Promise<void> {
++  await back_axios({
++    method: 'delete',
++    url: `${API_URL}/generations/${generation}`,
++  })
++}
++
++async function restartCore(): Promise<void> {
++  await back_axios({
++    method: 'post',
++    url: `${API_URL}/restart`,
++  })
++}
++
++/**
++ * The manifest is remote, so an unreachable publisher is reported alongside the
++ * list instead of being thrown: the generations on the card are still usable.
++ */
++async function loadReleases(): Promise<ReleasesResponse> {
++  return back_axios({
++    method: 'get',
++    url: `${API_URL}/releases`,
++  }).then((response) => response.data as ReleasesResponse)
++}
++
++async function activateRelease(version: string, mode: ActivationMode): Promise<ActivationResponse> {
++  return back_axios({
++    method: 'post',
++    url: `${API_URL}/releases/${version}/activate`,
++    params: { mode },
++    timeout: 30 * 60 * 1000, // the closure comes from a binary cache, which can be slow
++  }).then((response) => response.data as ActivationResponse)
++}
++
++async function downloadRelease(version: string): Promise<void> {
++  await back_axios({
++    method: 'post',
++    url: `${API_URL}/releases/${version}/download`,
++    timeout: 30 * 60 * 1000,
++  })
++}
++
++interface GitHubRelease {
++  body_html: string | null,
++  html_url: string,
++}
++
++const release_notes_requests = new Map<string, Promise<ReleaseNotes | undefined>>()
++
++async function requestReleaseNotes(version: string): Promise<ReleaseNotes | undefined> {
++  try {
++    const response = await fetchWithVehicleFallback(
++      `${RELEASES_API_URL}/tags/${version}`,
++      { Accept: RELEASE_NOTES_MEDIA_TYPE },
++    )
++    if (!response.ok) {
++      return undefined
++    }
++    const release = await response.json() as GitHubRelease
++    if (!release.body_html) {
++      return undefined
++    }
++    // GitHub renders anchors without a target, and following one would navigate BlueOS away
++    return {
++      html: release.body_html.replaceAll('<a ', '<a target="_blank" rel="noopener noreferrer" '),
++      url: release.html_url,
++    }
++  } catch {
++    return undefined
++  }
++}
++
++/**
++ * Only versions with a GitHub release are covered: `master`, branch builds and
++ * custom tags answer with a 404. Notes are cosmetic, so an unreachable GitHub
++ * reads as "no notes". Answers are shared between every card asking for the same
++ * version, and misses are forgotten so a vehicle that comes online later can
++ * still get the notes.
++ * @param version - Version string, e.g. `1.4.5` or `1.5.0-beta.42`
++ */
++async function getReleaseNotes(version: string): Promise<ReleaseNotes | undefined> {
++  const fixed_version = fixVersion(version)
++  if (fixed_version === null) {
++    return undefined
++  }
++
++  let request = release_notes_requests.get(fixed_version)
++  if (request === undefined) {
++    request = requestReleaseNotes(fixed_version)
++    release_notes_requests.set(fixed_version, request)
++    request.then((notes) => {
++      if (notes === undefined) {
++        release_notes_requests.delete(fixed_version)
++      }
++    })
++  }
++  return request
++}
++
++export {
++  activateGeneration,
++  activateRelease,
++  deleteGeneration,
++  describeError,
++  downloadRelease,
++  getAvailableUpdate,
++  getDocsUrl,
++  getReleaseNotes,
++  isPreRelease,
++  isSemVer,
++  latestRelease,
++  loadGenerations,
++  loadReleases,
++  loadStatus,
++  restartCore,
++  sortReleases,
++}
+diff --git a/core/frontend/src/views/MainView.vue b/core/frontend/src/views/MainView.vue
+index cc9c348b5e..b23214fe25 100644
+--- a/core/frontend/src/views/MainView.vue
++++ b/core/frontend/src/views/MainView.vue
+@@ -80,7 +80,8 @@
+ import { t } from 'ttag'
+ import Vue from 'vue'
+ 
+-import SelfHealthTest from '@/components/health/SelfHealthTest.vue'
++import SelfHealthTestDocker from '@/components/health/SelfHealthTest.vue'
++import SelfHealthTestNixos from '@/components/health/SelfHealthTestNixos.vue'
+ import GenericViewer from '@/components/vehiclesetup/viewers/GenericViewer.vue'
+ import VideoThumbnail from '@/components/video-manager/VideoThumbnail.vue'
+ import { OneMoreTime } from '@/one-more-time'
+@@ -90,6 +91,7 @@ import video from '@/store/video'
+ import { InternetConnectionState } from '@/types/helper'
+ import { StreamStatus } from '@/types/video'
+ import mavlink_store_get from '@/utils/mavlink'
++import use_nixos_updates from '@/utils/updates_backend'
+ import CPUUsage from '@/widgets/CpuPie.vue'
+ import Networking from '@/widgets/Networking.vue'
+ 
+@@ -117,7 +119,7 @@ interface AppItem {
+ export default Vue.extend({
+   name: 'MainView',
+   components: {
+-    SelfHealthTest,
++    SelfHealthTest: use_nixos_updates ? SelfHealthTestNixos : SelfHealthTestDocker,
+     GenericViewer,
+   },
+   data() {
+diff --git a/core/frontend/src/views/VersionChooser.vue b/core/frontend/src/views/VersionChooser.vue
+index 78ed6cc781..77ced1bacb 100644
+--- a/core/frontend/src/views/VersionChooser.vue
++++ b/core/frontend/src/views/VersionChooser.vue
+@@ -1,7 +1,7 @@
+ <template>
+   <v-container>
+     <not-safe-overlay />
+-    <version-chooser />
++    <component :is="chooser" />
+   </v-container>
+ </template>
+ 
+@@ -9,13 +9,19 @@
+ import Vue from 'vue'
+ 
+ import NotSafeOverlay from '@/components/common/NotSafeOverlay.vue'
+-import VersionChooser from '@/components/version-chooser/VersionChooser.vue'
++import VersionChooserDocker from '@/components/version-chooser/VersionChooser.vue'
++import VersionChooserNixos from '@/components/version-chooser/VersionChooserNixos.vue'
++import use_nixos_updates from '@/utils/updates_backend'
+ 
+ export default Vue.extend({
+   name: 'VersionChooserView',
+   components: {
+-    VersionChooser,
+     NotSafeOverlay,
+   },
++  data() {
++    return {
++      chooser: use_nixos_updates ? VersionChooserNixos : VersionChooserDocker,
++    }
++  },
+ })
+ </script>
+diff --git a/core/frontend/vite.config.js b/core/frontend/vite.config.js
+index 8bc482ee4b..1831d07a41 100644
+--- a/core/frontend/vite.config.js
++++ b/core/frontend/vite.config.js
+@@ -9,7 +9,10 @@ import wasm from "vite-plugin-wasm"
+ const { name } = require('./package.json')
+ 
+ process.env.PROJECT_NAME = name
+-process.env.VITE_BUILD_DATE = new Date().toLocaleString()
++// A wall-clock default would make every build differ, defeating binary caching
++// for the whole bundle. A caller that needs a reproducible build sets its own
++// date; otherwise this is only a developer convenience.
++process.env.VITE_BUILD_DATE = process.env.VITE_BUILD_DATE ?? new Date().toLocaleString()
+ const DEFAULT_ADDRESS = 'http://blueos-avahi.local/'
+ const SERVER_ADDRESS = process.env.BLUEOS_ADDRESS ?? DEFAULT_ADDRESS
+ 
+@@ -362,6 +365,9 @@ export default defineConfig(({ command, mode }) => {
+             })
+           },
+         },
++        '^/updates': {
++          target: SERVER_ADDRESS,
++        },
+         '^/wifi-manager': {
+           target: SERVER_ADDRESS,
+         },

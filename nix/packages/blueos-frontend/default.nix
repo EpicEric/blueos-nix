@@ -85,7 +85,7 @@ let
 
     dontFixup = true;
 
-    outputHash = "sha256-fjXSigFFtNKtoAVhtlNZVOX7Aioq67VIJDNgU3PxhaA=";
+    outputHash = "sha256-nyVPPdInd3ZKkelrmfXQ/J9wL9kncbO66w9JIXvMDSI=";
     outputHashAlgo = "sha256";
     outputHashMode = "recursive";
   };
@@ -101,8 +101,7 @@ stdenvNoCC.mkDerivation {
   ];
 
   patches = [
-    ./podman-image-names.patch
-    ./version-chooser-generations.patch
+    ./upstream-pr-4698.patch
   ];
 
   postPatch = ''
@@ -122,11 +121,13 @@ stdenvNoCC.mkDerivation {
     runHook preBuild
 
     # Vite reads VITE_* from the environment, and App.vue parses this as a git
-    # describe string to build a GitHub link: the `tags/` prefix and the `-g`
-    # hash are both meaningful to convertGitDescribeToUrl, so neither can be
-    # dropped. The frontend is baked at build time, so this cannot be set at
-    # runtime like the backend's GIT_DESCRIBE_TAGS.
-    export VITE_APP_GIT_DESCRIBE="tags/${version}-0-g${builtins.substring 0 7 rev}"
+    # describe string to build a GitHub link. There is no `tags/` prefix
+    # because this is not a tagged build: convertGitDescribeToTag then returns
+    # undefined and the link goes to the commit, which is the truthful target.
+    # The `-g` hash is still needed, and so is the same shape main.ts checks
+    # before enabling Sentry. The frontend is baked at build time, so this
+    # cannot be set at runtime like the backend's GIT_DESCRIBE_TAGS.
+    export VITE_APP_GIT_DESCRIBE="${version}-0-g${builtins.substring 0 7 rev}"
 
     # Pinned rather than read from the clock: this string ends up inside the
     # bundle, so a wall-clock value would make every build a different store
@@ -137,6 +138,11 @@ stdenvNoCC.mkDerivation {
     # versions differently under NixOS, so the frontend ships both and this
     # picks one at build time.
     export VITE_BLUEOS_UPDATES=nixos
+
+    # The bundle outgrew node's default heap once the Zenoh inspector and the
+    # video decoders landed; upstream's Dockerfile raises it for the same
+    # reason. Without this the build dies with "JavaScript heap out of memory".
+    export NODE_OPTIONS=--max-old-space-size=8192
 
     pushd core/frontend
     bun run build
