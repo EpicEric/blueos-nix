@@ -17,7 +17,7 @@ rec {
   # Pinned by commit: a tag ref is not an identity, and the version chooser
   # needs something that distinguishes two builds of the same tag. The hash
   # below is the commit's own tree.
-  rev = "e5cd9aae31f191ae98dc334771c3256ecb4d8e72";
+  rev = "baf03706fb6f1277aa3e9f563ee7bf2a76f62cd7";
 
   # BlueOS reports its channel to Sentry and to the version chooser. `dev`
   # both distinguishes these builds from released ones and keeps them out of
@@ -28,12 +28,12 @@ rec {
   # `VITE_BUILD_DATE` is baked into the bundle, so it has to be a fixed value:
   # reading the wall clock makes every build a different store path, which
   # defeats the binary cache. Update this whenever `rev` moves.
-  date = "2026-11-06";
+  date = "2026-11-09";
 
   src = fetchFromGitHub {
     owner = "BlueRobotics";
     repo = "BlueOS";
     inherit rev;
-    hash = "sha256-hstBAGkaQpcedHqDDLkBzJ7fwbrub0r0vWIAea2eqU0=";
+    hash = "sha256-ZvzQjMu4xvjE4gg6SVixz8McEJPWMmlmE1vDiJ5y9VI=";
   };
 }

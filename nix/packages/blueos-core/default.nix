@@ -44,7 +44,6 @@ let
     patches = [
       ./cable-guy-dhcpcd.patch
       ./helper-nginx-paths.patch
-      ./kraken-podman-pull.patch
       ./navigator-bmp390.patch
     ];
   };

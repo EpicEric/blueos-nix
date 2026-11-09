@@ -125,7 +125,6 @@ The patches currently carried:
 | ---------------------------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `blueos-core/cable-guy-dhcpcd.patch`     | Never upstream      | A `dhcpcd` daemon already owns the interface on Bookworm and Bullseye; the one-shot client would regress the inherited `DHCPCD` handler.                       |
 | `blueos-core/helper-nginx-paths.patch`   | Permanently carried | Points helper at this repo's nginx pid file, extension directory and config. Upstream's paths are container-specific.                                          |
-| `blueos-core/kraken-podman-pull.patch`   | Upstream then drop  | Podman produces `repo:tag:tag` because `_pull_docker_image` passes the image as both the positional argument and `tag=`.                                       |
 | `blueos-core/navigator-bmp390.patch`     | Upstream then drop  | Upstream PR 4677, verbatim, so the carried patch is what will merge.                                                                                           |
 | `blueos-frontend/upstream-pr-4698.patch` | Upstream then drop  | The generation-based version chooser, gated on `VITE_BLUEOS_UPDATES === 'nixos'`. Replaces a 3,000-line local patch that conflicted with the frontend rewrite. |
 
