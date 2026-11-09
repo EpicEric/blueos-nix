@@ -4,9 +4,12 @@
   ardupilot-tools,
   bash,
   blueos-frontend,
+  blueos-recorder,
   blueos-source,
   bridges,
+  disktest,
   filebrowser,
+  gst_all_1,
   iproute2,
   lib,
   linux2rest,
@@ -17,11 +20,14 @@
   mavlink2rest,
   mavlink-camera-manager,
   mavp2p,
+  mcap,
+  mcap-foxglove-video-extract,
   nginx,
   procps,
   pyproject-build-systems,
   pyproject-nix,
   python311,
+  swagger-ui,
   systemd,
   ttyd,
   uv2nix,
@@ -36,14 +42,10 @@ let
     name = "BlueOS-${version}-patched";
     src = blueos-source.src;
     patches = [
-      ./ardupilot-manager-kill-fallback.patch
       ./cable-guy-dhcpcd.patch
       ./helper-nginx-paths.patch
       ./kraken-podman-pull.patch
-      ./kraken-container-reuse.patch
-      ./navigator-arch-detect.patch
       ./navigator-bmp390.patch
-      ./navigator-nixos-serial-map.patch
     ];
   };
 
@@ -61,8 +63,6 @@ let
   overrides = final: prev: {
     aiohttp = setuptools final prev "aiohttp";
     psutil = setuptools final prev "psutil";
-    pykson = setuptools final prev "pykson";
-    pyrsistent = setuptools final prev "pyrsistent";
     python-multipart = setuptools final prev "python-multipart";
     smbus2 = setuptools final prev "smbus2";
     pydantic = setuptools final prev "pydantic";
@@ -79,10 +79,17 @@ let
     ]
   );
 
-  env = pythonSet.mkVirtualEnv "blueos-core-env" workspace.deps.default;
+  # The pinned pyproject sets `tool.uv.default-groups = [ "dev" "lint" ]`,
+  # and deps.default maps that straight into the venv: it would install pytest,
+  # pylint and mypy into the runtime environment. An empty spec installs each
+  # package's own dependencies, which is what the container's
+  # `uv sync --no-default-groups` does.
+  env = pythonSet.mkVirtualEnv "blueos-core-env" { blueos-core = [ ]; };
 
   # Each service is launched as `<service>/main.py` with its own directory on
-  # sys.path, which is how they import their sibling modules.
+  # sys.path, which is how they import their sibling modules. This is the set
+  # the Python wrappers are built for; it is not the same as the list of units,
+  # since some entries of core/start-blueos-core are not Python services.
   services = [
     "ardupilot_manager"
     "bag_of_holding"
@@ -90,12 +97,14 @@ let
     "bridget"
     "cable_guy"
     "commander"
+    "customization"
+    "disk_usage"
     "helper"
     "kraken"
-    "log_zipper"
     "nmea_injector"
     "pardal"
     "ping"
+    "recorder_extractor"
     "wifi"
   ];
 
@@ -109,8 +118,12 @@ let
   '') services;
 
   runtimePath = lib.makeBinPath [
+    ardupilot-tools
+    blueos-recorder
     bridges
+    disktest
     filebrowser
+    gst_all_1.gst-plugins-base
     iproute2
     linux2rest
     machineid-cli
@@ -119,6 +132,8 @@ let
     mavlink-server
     mavlink2rest
     mavp2p
+    mcap
+    mcap-foxglove-video-extract
     nginx
     procps
     systemd
@@ -142,9 +157,18 @@ env.overrideAttrs (old: {
 
     mkdir -p $out/share
     ln -s ${blueos-frontend}/share/blueos-frontend $out/share/blueos-frontend
+    ln -s ${swagger-ui} $out/share/swagger-ui
   '';
 
   passthru = (old.passthru or { }) // {
-    inherit env src blueos-frontend version rev channel;
+    inherit
+      env
+      src
+      blueos-frontend
+      swagger-ui
+      version
+      rev
+      channel
+      ;
   };
 })
