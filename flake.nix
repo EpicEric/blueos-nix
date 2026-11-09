@@ -52,6 +52,10 @@
       compiledPackages = pkgs: {
         bridges = pkgs.callPackage ./nix/packages/bridges { };
 
+        blueos-recorder = pkgs.callPackage ./nix/packages/blueos-recorder { };
+
+        disktest = pkgs.callPackage ./nix/packages/disktest { };
+
         linux2rest = pkgs.callPackage ./nix/packages/linux2rest { };
 
         machineid-cli = pkgs.callPackage ./nix/packages/machineid-cli { };
@@ -65,55 +69,33 @@
         mavlink-camera-manager = pkgs.callPackage ./nix/packages/mavlink-camera-manager { };
 
         mavp2p = pkgs.callPackage ./nix/packages/mavp2p { };
-      };
 
-      crossPkgs = nixpkgs.legacyPackages.x86_64-linux.pkgsCross.aarch64-multiplatform;
+        mcap = pkgs.mcap-cli;
 
-      # mavlink-router only links libsystemd and builds in a minute under QEMU,
-      # while cross-building it compiles systemd from source: cross-built
-      # libraries are not in cache.nixos.org.
-      crossPackages = removeAttrs (compiledPackages crossPkgs) [ "mavlink-router" ] // {
-        # The module names this option `updates`, so the key has to match it for
-        # a cross build to pick the cross-compiled daemon over the native one.
-        updates = crossPkgs.callPackage ./nix/packages/blueos-updates { };
+        mcap-foxglove-video-extract = pkgs.callPackage ./nix/packages/mcap-foxglove-video-extract { };
 
-        mavlink-camera-manager = crossPkgs.callPackage ./nix/packages/mavlink-camera-manager {
-          pkgsNative = nixpkgs.legacyPackages.aarch64-linux;
-        };
+        zenoh = pkgs.callPackage ./nix/packages/zenoh { };
+
+        zenoh-backend-filesystem = pkgs.callPackage ./nix/packages/zenoh-backend-filesystem { };
+
+        zenoh-plugin-remote-api = pkgs.callPackage ./nix/packages/zenoh-plugin-remote-api { };
       };
 
       # One SD image per supported board. nixos-hardware supplies the kernel and
       # the firmware partition handling; the board file only adds what the
-      # Navigator needs on top.
-      #
-      # With `cross`, the system is still evaluated as native aarch64-linux so
-      # everything else substitutes from cache.nixos.org. Only the kernel and the
-      # compiled BlueOS packages are built on x86_64, which skips the QEMU
-      # emulation that makes them slow.
+      # Navigator needs on top. These are aarch64-linux systems, so building
+      # them needs an ARM host or QEMU binfmt.
       mkBlueOS =
-        {
-          board,
-          cross ? false,
-        }:
+        { board }:
         lib.nixosSystem {
           system = "aarch64-linux";
           specialArgs = {
-            blueos =
-              if cross then
-                self.packages.aarch64-linux.blueos-core.override crossPackages
-              else
-                self.packages.aarch64-linux.blueos-core;
+            blueos = self.packages.aarch64-linux.blueos-core;
             sdImageModule = "${nixpkgs}/nixos/modules/installer/sd-card/sd-image.nix";
             # The flake's own U-Boot build, which has the bootcount fallback the
             # stock package lacks. Passed as an argument because the module's
             # `pkgs` is nixpkgs, which does not know about this repo's packages.
-            # Resolved from the board's own package set so that a native ARM
-            # runner builds it natively and an x86_64 one cross-compiles it.
-            ubootPackage =
-              if cross then
-                crossPkgs.callPackage ./nix/packages/uboot-rpi { }
-              else
-                nixpkgs.legacyPackages.aarch64-linux.callPackage ./nix/packages/uboot-rpi { };
+            ubootPackage = self.packages.aarch64-linux.uboot-rpi;
             # Null for a dirty tree and for a plain path flake; version.nix
             # reports that as "unknown" rather than failing the build.
             blueosNixRev = self.rev or self.dirtyRev or null;
@@ -129,22 +111,9 @@
               # rather than derived: Nix evaluates this without knowing which
               # repository it is being read from, which is also why a fork
               # publishing its own builds has to override it.
-              services.blueos.updates.manifestUrl =
-                "https://epiceric.github.io/blueos-nix/manifest.json";
+              services.blueos.updates.manifestUrl = "https://epiceric.github.io/blueos-nix/manifest.json";
             }
-          ]
-          ++ lib.optional cross (
-            { pkgs, ... }:
-            {
-              services.blueos.packages = crossPackages;
-
-              boot.kernelPackages = pkgs.linuxPackagesFor (
-                crossPkgs.callPackage "${nixos-hardware}/raspberry-pi/common/kernel.nix" {
-                  rpiVersion = lib.toInt board;
-                }
-              );
-            }
-          );
+          ];
         };
     in
     {
@@ -163,6 +132,8 @@
 
           ardupilot-tools = pkgs.callPackage ./nix/packages/ardupilot-tools { };
 
+          swagger-ui = pkgs.callPackage ./nix/packages/swagger-ui { };
+
           blueos-updates = pkgs.callPackage ./nix/packages/blueos-updates { };
 
           blueos-core = pkgs.callPackage ./nix/packages/blueos-core {
@@ -174,9 +145,11 @@
 
             inherit (self.packages.${system})
               ardupilot-tools
+              blueos-recorder
               blueos-source
               blueos-frontend
               bridges
+              disktest
               linux2rest
               machineid-cli
               mavlink-router
@@ -184,10 +157,22 @@
               mavlink2rest
               mavlink-camera-manager
               mavp2p
+              mcap
+              mcap-foxglove-video-extract
+              swagger-ui
+              zenoh
               ;
           };
 
           default = self.packages.${system}.blueos-core;
+        }
+
+        # A Pi bootloader, so it only exists for the architecture the images
+        # are built for. On x86_64 the attribute would name an aarch64
+        # derivation that nothing there can use, and `nix build` would try to
+        # build it through QEMU.
+        // lib.optionalAttrs (system == "aarch64-linux") {
+          uboot-rpi = pkgs.callPackage ./nix/packages/uboot-rpi { };
         }
       );
 
@@ -206,14 +191,6 @@
       nixosConfigurations = {
         blueos-pi4 = mkBlueOS { board = "4"; };
         blueos-pi5 = mkBlueOS { board = "5"; };
-        blueos-pi4-cross = mkBlueOS {
-          board = "4";
-          cross = true;
-        };
-        blueos-pi5-cross = mkBlueOS {
-          board = "5";
-          cross = true;
-        };
       };
     };
 }
