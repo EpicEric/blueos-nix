@@ -478,6 +478,15 @@ in
       "vm.swappiness" = 10;
     };
 
+    # The journal has no size limit by default, which on a 2GB board means a
+    # runaway writer (see linux2rest's journal forwarding) can fill the card and
+    # pin a matching amount of page cache. Upstream's log_zipper is gone, so
+    # this is the only bound on /var/log/journal.
+    services.journald.settings.Journal = {
+      SystemMaxUse = "64M";
+      RuntimeMaxUse = "32M";
+    };
+
     services.udev.extraRules = ''
       ${builtins.readFile "${src}/install/udev/100.autopilot.rules"}
       ${builtins.readFile "${src}/install/udev/110.usb-power.rules"}
