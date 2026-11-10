@@ -75,5 +75,6 @@ in
 
   documentation.enable = mkDefault false;
 
+  # Do not modify this!
   system.stateVersion = "25.11";
 }
