@@ -1,9 +1,7 @@
 # Accepts a BMP390 barometer on i2c address 0x77, which newer Navigator
-# revisions carry instead of the BME280 on 0x76. The two are alternatives, so
-# the barometer becomes any-of rather than required.
+# revisions carry instead of the BME280 on 0x76.
 #
-# This is upstream PR 4677, kept verbatim so the patch matches what upstream
-# will merge. Delete it once that PR lands.
+# Upstream PR 4677, kept verbatim. Delete it once that PR lands.
 diff --git a/core/services/ardupilot_manager/flight_controller_detector/linux/navigator.py b/core/services/ardupilot_manager/flight_controller_detector/linux/navigator.py
 index 406ef37..943bf90 100644
 --- a/core/services/ardupilot_manager/flight_controller_detector/linux/navigator.py

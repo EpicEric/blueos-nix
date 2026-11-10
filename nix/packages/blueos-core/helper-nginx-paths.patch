@@ -1,6 +1,5 @@
 # NixOS files these under different paths than the container image does, so
-# every place helper looks them up is redirected. Nothing here is upstreamable:
-# in the image the paths are correct.
+# every place helper looks them up is redirected. Not upstreamable.
 diff --git a/core/services/helper/main.py b/core/services/helper/main.py
 index 5f71130..4260ce2 100755
 --- a/core/services/helper/main.py

@@ -36,8 +36,6 @@
 let
   inherit (blueos-source) version rev channel;
 
-  # applyPatches keeps the passthru of the source it wraps, so `tag` would be
-  # null here: the source is pinned by commit, not by tag.
   src = applyPatches {
     name = "BlueOS-${version}-patched";
     src = blueos-source.src;
@@ -79,17 +77,13 @@ let
     ]
   );
 
-  # The pinned pyproject sets `tool.uv.default-groups = [ "dev" "lint" ]`,
-  # and deps.default maps that straight into the venv: it would install pytest,
-  # pylint and mypy into the runtime environment. An empty spec installs each
-  # package's own dependencies, which is what the container's
-  # `uv sync --no-default-groups` does.
+  # An empty spec installs only each package's own dependencies. The default
+  # groups would pull pytest, pylint and mypy into the runtime venv.
   env = pythonSet.mkVirtualEnv "blueos-core-env" { blueos-core = [ ]; };
 
-  # Each service is launched as `<service>/main.py` with its own directory on
-  # sys.path, which is how they import their sibling modules. This is the set
-  # the Python wrappers are built for; it is not the same as the list of units,
-  # since some entries of core/start-blueos-core are not Python services.
+  # Launched as `<service>/main.py` with its own directory on sys.path. Not the
+  # same set as the units: some entries of core/start-blueos-core are not
+  # Python services.
   services = [
     "ardupilot_manager"
     "bag_of_holding"
@@ -146,7 +140,6 @@ env.overrideAttrs (old: {
 
   nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ makeWrapper ];
 
-  # pyprojectMakeVenv runs this hook after it has built the venv into $out.
   postInstall = (old.postInstall or "") + ''
     ${serviceScripts}
 
