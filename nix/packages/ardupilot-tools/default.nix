@@ -1,8 +1,5 @@
 {
   fetchurl,
-  # The uploader imports pyserial and the decoder imports pyelftools, so the
-  # interpreter must carry them. blueos-core cannot supply its own venv here
-  # without a cycle.
   python311,
   runCommand,
 }:
@@ -12,8 +9,7 @@ let
     ps.pyelftools
   ]);
 
-  # Each script is pinned to the commit core/tools/ardupilot_tools/setup-python-libs.sh
-  # uses at this repo's pinned BlueOS commit.
+  # Pinned to the commits core/tools/ardupilot_tools/setup-python-libs.sh uses.
   script =
     commit: file: hash:
     fetchurl {
@@ -34,7 +30,7 @@ in
 runCommand "ardupilot-tools"
   {
     # patchShebangs --host resolves `env python*` against HOST_PATH, which only
-    # holds buildInputs. These must not become nativeBuildInputs.
+    # holds buildInputs.
     buildInputs = [ python ];
   }
   ''
@@ -43,7 +39,7 @@ runCommand "ardupilot-tools"
     install -m755 ${uploader} $out/bin/ardupilot_fw_uploader.py
     install -m755 ${apjTool} $out/bin/apj_tool.py
 
-    # FirmwareInstall imports this as a module, so it belongs on PYTHONPATH.
+    # Imported by FirmwareInstall, so it goes on PYTHONPATH.
     install -m644 ${decoder} $out/lib/python/ardupilot_fw_decoder.py
 
     patchShebangs --host $out/bin
