@@ -77,9 +77,6 @@ jobs:
         run: |
           niks3 pins create "blueos-${{ github.ref_name }}" "$(cat "$RUNNER_TEMP/toplevel")"
 
-      # The manifest names store paths, so it may only be written once the
-      # closure they belong to is in the cache. Running after the push step
-      # makes a failed push fail the job before anything is advertised.
       - name: Collect the release metadata
         if: startsWith(github.ref, 'refs/tags/')
         run: |
@@ -125,22 +122,13 @@ jobs:
         with:
           files: image/sd-image/*.img.zst
 
-  # Devices hold no credentials, so the manifest is published to GitHub Pages,
-  # which serves it anonymously. The entry is derived from the closure itself,
-  # which means the published file is a record of what was built rather than a
-  # second place where a version has to be kept in agreement with one.
   publish:
     name: Publish the release manifest
     needs: image
-    # Only tags are advertised. A build of main carries the version pinned in
-    # blueos-source, so publishing it would replace the tagged build of that
-    # same version with one no release describes.
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-24.04-arm
     permissions:
       contents: write
-    # The group above is keyed per ref, so two tags pushed together are two
-    # concurrent runs and would otherwise interleave this read-modify-write.
     concurrency:
       group: manifest-publish
       cancel-in-progress: false
