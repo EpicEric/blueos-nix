@@ -96,6 +96,11 @@ let
         # only reaches PAM sessions, so units need it here.
         GIT_DESCRIBE_TAGS = cfg.gitDescribe;
         RUST_BACKTRACE = "1";
+        # glibc defaults this to 1 on aarch64, so malloc advises the heap with
+        # MADV_HUGEPAGE. This kernel runs THP in madvise mode, so each service
+        # heap becomes 2 MiB pages: part of every page goes unused, and zram
+        # gets pages too coarse to compress well.
+        GLIBC_TUNABLES = "glibc.malloc.hugetlb=0";
       }
       // environment;
       preStart = "mkdir -p ${logs}/${name}\n" + preStart;
