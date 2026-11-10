@@ -11,7 +11,7 @@ let
   version = "0.9.5";
 
   # build.rs downloads Vue at build time, which the sandbox forbids; the patch
-  # drops the download and the file is supplied from a fixed-output fetch instead.
+  # drops the download and this file is supplied instead.
   vue = fetchurl {
     url = "https://unpkg.com/vue@3.0.5/dist/vue.global.js";
     hash = "sha256-Wr5PnkpmZ3oQFRZLfDrI6fsePSMak5h8rW2rqq+mdWg=";

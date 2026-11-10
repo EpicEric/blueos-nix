@@ -1,14 +1,9 @@
 # Treats a missing /dev/serial/by-path as an empty directory instead of a warn.
 #
-# 60-serial.rules only creates that directory while a ttyUSB/ttyACM device is
-# present, and udev removes it again when the last one is unplugged. Boards
-# without a USB serial adapter therefore hit ENOENT on every lookup, and
-# fetch_by_path runs once per enumerated port per poll: the recorder's
-# serial-ports interval plus every frontend /serial?udev=true request. The
-# {error:#?} rendering is five lines, so each miss costs ~5 journal entries.
-# The port still reports by_path: null either way, so only the log changes.
-#
-# Upstreamable: any host without a USB serial adapter is affected.
+# udev only creates that directory while a USB serial device is present. Boards
+# without one hit ENOENT on every lookup, once per enumerated port per poll, and
+# the multiline error costs several journal entries each time. The port still
+# reports by_path: null either way, so only the log changes.
 --- a/src/features/serial.rs
 +++ b/src/features/serial.rs
 @@ -42,7 +42,11 @@ impl PortInfo {

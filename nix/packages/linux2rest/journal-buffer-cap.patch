@@ -1,13 +1,9 @@
 # Caps the retained journal history at 20k entries instead of 200k.
 #
-# The follower keeps every entry it has parsed in a Vec, and ask_for_client()
-# clones that whole Vec into the new client's channel, so the buffer costs both
-# its own resident size and a second copy on each websocket connect. A
-# JournalEntry measured ~1.09 KB on a Pi 4, which puts the upstream cap near
-# 218 MB against the service's own 250 MB MemoryMax.
-#
-# 20k entries is ~22 MB and still covers the live log stream the frontend reads;
-# only the depth of scrollback behind it changes.
+# The follower keeps every parsed entry in a Vec and clones the whole thing into
+# each new client's channel. At ~1.09 KB per entry the upstream cap approaches
+# the service's 250 MB MemoryMax; 20k entries is ~22 MB, which still covers the
+# live log stream the frontend reads.
 --- a/src/features/journal.rs
 +++ b/src/features/journal.rs
 @@ -11,7 +11,7 @@

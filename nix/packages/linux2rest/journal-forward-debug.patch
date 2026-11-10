@@ -1,18 +1,9 @@
 # Logs forwarded journal and kernel messages at debug instead of info.
 #
-# Under the container, linux2rest's stdout goes to Docker's log driver, so the
-# "Sending journal message to zenoh" line never reaches journald. Its journalctl
-# follower therefore only ever reads messages from other services. Running it as
-# a systemd unit puts stdout back in the journal, and every forwarded entry
-# produces a new entry that the same follower picks up: at info level the echo
-# is 94% of the journal, ~1.5 MB/s, and never catches up.
-#
-# debug keeps the line available with RUST_LOG=debug while the default info
-# filter drops it, so nothing reaches stdout and the follower never sees its own
-# output.
-#
-# Upstreamable: the same fix is correct in the container for anyone who collects
-# stdout into journald there.
+# As a systemd unit stdout goes to the journal, so every forwarded entry the
+# follower picks up produces another entry: at info level the echo is most of
+# the journal and never catches up. debug keeps the line available under
+# RUST_LOG=debug while the default filter drops it.
 --- a/src/recorder/mod.rs
 +++ b/src/recorder/mod.rs
 @@ -34,7 +34,7 @@
