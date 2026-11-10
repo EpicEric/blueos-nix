@@ -96,19 +96,29 @@
             }
           ];
         };
+
+      mkQemuGuest =
+        { module }:
+        lib.nixosSystem {
+          system = "x86_64-linux";
+          specialArgs = {
+            blueos = self.packages.x86_64-linux.blueos-core;
+            blueosNixRev = self.rev or self.dirtyRev or null;
+          };
+          modules = [ module ];
+        };
     in
     {
       packages = forAllSystems (
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
+          blueos-source = pkgs.callPackage ./nix/packages/blueos-source { };
         in
         compiledPackages pkgs
         // {
-          blueos-source = pkgs.callPackage ./nix/packages/blueos-source { };
-
           blueos-frontend = pkgs.callPackage ./nix/packages/blueos-frontend {
-            inherit (self.packages.${system}) blueos-source;
+            inherit blueos-source;
           };
 
           ardupilot-tools = pkgs.callPackage ./nix/packages/ardupilot-tools { };
@@ -124,10 +134,11 @@
               pyproject-build-systems
               ;
 
+            inherit blueos-source;
+
             inherit (self.packages.${system})
               ardupilot-tools
               blueos-recorder
-              blueos-source
               blueos-frontend
               bridges
               disktest
@@ -149,6 +160,10 @@
         // lib.optionalAttrs (system == "aarch64-linux") {
           uboot-rpi = pkgs.callPackage ./nix/packages/uboot-rpi { };
         }
+        // lib.optionalAttrs (system == "x86_64-linux") {
+          blueos-guest-qemu = self.nixosConfigurations.blueos-guest.config.system.build.images.qemu;
+          blueos-native-qemu = self.nixosConfigurations.blueos-native.config.system.build.images.qemu;
+        }
       );
 
       nixosModules = {
@@ -166,6 +181,9 @@
       nixosConfigurations = {
         blueos-pi4 = mkBlueOS { board = "4"; };
         blueos-pi5 = mkBlueOS { board = "5"; };
+
+        blueos-guest = mkQemuGuest { module = ./nix/nixos/qemu/sil.nix; };
+        blueos-native = mkQemuGuest { module = ./nix/nixos/qemu/native.nix; };
       };
     };
 }
