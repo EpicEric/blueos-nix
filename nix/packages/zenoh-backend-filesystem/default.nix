@@ -1,11 +1,9 @@
 # The filesystem storage backend, which zenohd loads alongside the storage
-# manager plugin. Upstream ships it and sets ZENOH_BACKEND_FS_ROOT for zenohd,
-# but the pinned blueos-zenoh.json5 declares no storages, so nothing currently
-# uses it: this exists so the deployment matches the release's plugin set and a
-# storage can be declared later without repackaging zenoh.
+# manager plugin. The pinned blueos-zenoh.json5 declares no storages, so nothing
+# uses it yet; it exists so the deployment matches the release's plugin set and
+# a storage can be declared later without repackaging zenoh.
 #
-# Pinned to 1.9.0 for the same reason as the router: the plugin ABI check
-# compares version and features for equality.
+# Pinned to 1.9.0 for the same reason as the router.
 {
   fetchzip,
   lib,
