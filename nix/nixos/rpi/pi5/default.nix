@@ -1,4 +1,5 @@
-# Raspberry Pi 5 with a Navigator hat, mirroring install/boards/bcm_2712.sh.
+# Raspberry Pi 5 with a Navigator hat, mirroring install/boards/bcm_2712.sh
+
 {
   lib,
   ...
@@ -15,9 +16,6 @@ in
         "i2c_arm=on"
         "spi=on"
       ];
-      # nixos-hardware turns this off because the Pi 5 mini UART can feed ghost
-      # input into U-Boot. BlueOS needs the primary UART for the Navigator's
-      # port C, and its own board script enables it too, so it wins here.
       enable_uart = lib.mkForce true;
       gpio = mkDefault [
         "11,24,25=op,pu,dh"
@@ -25,8 +23,6 @@ in
       ];
     };
 
-    # The Pi 5 exposes its UARTs through different overlays than the Pi 4, and
-    # has one hardware i2c (3) plus a software one on GPIOs 22/23 for bus 6.
     deviceTreeOverlays.pi5 = [
       { uart0-pi5 = { }; }
       { uart2-pi5 = { }; }
