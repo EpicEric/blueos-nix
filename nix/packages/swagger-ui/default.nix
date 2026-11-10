@@ -2,9 +2,8 @@
 # /usr/blueos/static. Without them every service's /docs page loads them from a
 # CDN, which a vehicle without internet cannot reach.
 #
-# They come from the published npm packages rather than from the CDN paths
-# upstream's bootstrap script curls, so each file is covered by the package's
-# own integrity and there is one fetch per package instead of three.
+# Fetched from the published npm packages rather than the CDN paths upstream's
+# bootstrap script curls, so each file is covered by the package's own integrity.
 {
   fetchzip,
   runCommand,
