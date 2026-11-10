@@ -14,6 +14,10 @@ rec {
 
   # Reported to Sentry and to the version chooser. `dev` keeps these builds out
   # of Sentry, which only accepts a `<x.y.z>-<commits>-g<hash>` describe string.
+  # Available options:
+  # - stable
+  # - beta
+  # - dev
   channel = "dev";
 
   # The pinned commit's date, in the format the frontend shows as "Build:".
