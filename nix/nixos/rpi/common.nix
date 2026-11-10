@@ -1,8 +1,3 @@
-# Shared base for a BlueOS SD card image on a Raspberry Pi.
-#
-# Boot goes through the vendor firmware into U-Boot, which reads extlinux.conf
-# from the generic-extlinux-compatible loader. That is what gives the image a
-# generation menu; the firmware's own direct-kernel path has none.
 {
   config,
   lib,
@@ -17,9 +12,6 @@ let
 
   install = "${blueos.passthru.src}/install";
 
-  # BlueOS ships these overlays as source and compiles them on the board. The
-  # firmware install script only stages overlays already in the firmware
-  # package, so they have to be built here instead.
   firmware = pkgs.runCommand "raspberrypifw-navigator" { nativeBuildInputs = [ pkgs.dtc ]; } ''
     cp -r ${pkgs.raspberrypifw} $out
     chmod -R u+w $out
@@ -36,18 +28,10 @@ in
 
   hardware.raspberry-pi.firmware = {
     package = mkDefault firmware;
-    # Loaded by the GPU firmware before U-Boot, which then keeps the device tree
-    # the firmware built from config.txt.
     uboot.enable = mkDefault true;
-    # Bootcount support, which the stock U-Boot build lacks, so that a
-    # generation that never reaches userspace can be abandoned automatically.
     uboot.package = mkDefault ubootPackage;
   };
 
-  # U-Boot keeps its boot counter here, and the rollback timer has to delete it
-  # to confirm a generation, so the partition cannot stay noauto as in the base
-  # sd-image module. nofail is kept: a corrupt firmware partition must still
-  # leave a bootable system.
   fileSystems."/boot/firmware".options = mkForce [ "nofail" ];
 
   sdImage = {
@@ -59,25 +43,16 @@ in
     firmwareSize = mkDefault 512;
   };
 
-  # The default name is derived from system.nixos.label, which is the same for
-  # every board: both images would be called the same and only one would survive
-  # the upload to a release. The board is what tells them apart.
   image.baseName = mkDefault "blueos-${config.services.blueos.board}-${config.services.blueos.gitDescribe}";
 
-  # The base profile pulls in every filesystem and its repair tools, and zfs
-  # alone drags a Python in. A BlueOS device only needs these two.
   boot.supportedFilesystems = mkForce [
     "vfat"
     "ext4"
   ];
   boot.zfs.forceImportRoot = mkDefault false;
 
-  # The default initrd module list includes Rockchip drivers that the Raspberry
-  # Pi vendor kernel does not build.
   boot.initrd.allowMissingModules = mkDefault true;
 
-  # BlueOS sizes its dphys-swapfile to 1GB when the card has room. Without a
-  # swapfile the image has none, and the services get OOM killed instead.
   swapDevices = [
     {
       device = "/var/swapfile";
@@ -86,10 +61,7 @@ in
     }
   ];
 
-  # Compressed swap in RAM in front of the swapfile. The zram module defaults to
-  # priority 5, which would put the card first, so the swapfile above is only
-  # reached once zram is full. Without it every page of reclaim is a write to
-  # the SD card, which is both slow and what wears it out.
+  # Compressed swap in RAM in front of the swapfile
   zramSwap = {
     enable = mkDefault true;
     priority = mkDefault 100;
