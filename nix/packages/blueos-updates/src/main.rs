@@ -1,10 +1,8 @@
 //! BlueOS update daemon.
 //!
-//! Answers "which BlueOS is this, which ones can I go back to, and what can I
-//! update to" for a system whose versions are NixOS generations rather than
-//! container images. Everything here is a thin view over the system profile, so
-//! a generation installed by `nixos-rebuild` or deploy-rs shows up exactly like
-//! one the daemon installed itself.
+//! A version on this system is a NixOS generation, so everything here is a thin
+//! view over the system profile: a generation installed by `nixos-rebuild` or
+//! deploy-rs looks the same as one this daemon installed itself.
 
 mod apply;
 mod config;
@@ -63,8 +61,7 @@ pub(crate) struct StatusResponse {
     /// The last generation that booted and passed its health check, which is
     /// what an automatic rollback would return to.
     known_good: Option<GenerationInfo>,
-    /// What the system profile points at, when that is not what is running. An
-    /// update installed with `boot` is in this state until the machine reboots.
+    /// What the system profile points at, when that is not what is running.
     installed: Option<GenerationInfo>,
     /// An activation that has not confirmed itself yet. While this is set, the
     /// rollback timer is running.
@@ -72,11 +69,10 @@ pub(crate) struct StatusResponse {
     /// Whether a reboot is what stands between `installed` and `current`.
     reboot_required: bool,
     /// The generation that was running when an update failed and was rolled
-    /// back. It is what the UI shows to explain why the version changed on its
-    /// own; it stays set until the next activation.
+    /// back. Stays set until the next activation.
     rolled_back_from: Option<String>,
     /// Output of the last activation's `switch-to-configuration`, which runs
-    /// detached and so reports nothing through the request that started it.
+    /// detached and so cannot report through the request that started it.
     last_switch_log: Option<String>,
 }
 
@@ -134,8 +130,6 @@ fn rollback_state() -> RollbackState {
 /// switch is where it stopped, which is at the end.
 const SWITCH_LOG_TAIL_BYTES: usize = 4096;
 
-/// The tail of the last detached switch's output, so a failure that happened
-/// after this daemon was restarted can still be explained.
 fn switch_log() -> Option<String> {
     let raw = std::fs::read(apply::SWITCH_LOG).ok()?;
     let start = raw.len().saturating_sub(SWITCH_LOG_TAIL_BYTES);
@@ -143,9 +137,9 @@ fn switch_log() -> Option<String> {
     (!text.is_empty()).then_some(text)
 }
 
-/// The running generation. It is normally one of the profile's own generations;
-/// when it is not (an ad-hoc `nix-env --set`), it is reported anyway rather than
-/// failing, since "what is running" still has a truthful answer.
+/// The running generation. Normally one of the profile's own generations; when
+/// it is not (an ad-hoc `nix-env --set`), it is reported anyway rather than
+/// failing.
 fn current_generation() -> anyhow::Result<generations::Generation> {
     let toplevel = generations::current_toplevel().context("cannot resolve the running system")?;
     let mut generations = generations::all()?;
@@ -180,10 +174,8 @@ async fn status() -> Result<HttpResponse, ApiError> {
         .and_then(generations::find)
         .map(|generation| generation.info_with(known_good_id));
 
-    // `nixos-rebuild boot` and the daemon's own `boot` mode move the profile
+    // `nixos-rebuild boot` and this daemon's own `boot` mode move the profile
     // without changing what runs, so the two only differ while a reboot is owed.
-    // A `switch` updates both, which is why comparing them is enough here: it
-    // does not need the kernel comparison that deciding to reboot does.
     let installed = generations::profile_toplevel()
         .filter(|toplevel| *toplevel != current.toplevel)
         .and_then(|toplevel| {
@@ -364,9 +356,8 @@ async fn activate_release(
     let version = version.into_inner();
     let target = published_release(&version, &data).await?;
 
-    // Activation sets the profile to the store path directly, which is how a
-    // downloaded build becomes a generation. Realising first means a closure
-    // that is not in the cache fails before the profile moves.
+    // Activation sets the profile to the store path directly. Realising first
+    // means a closure that is not in the cache fails before the profile moves.
     apply::realise(&target.toplevel).await?;
     let outcome = apply::activate(
         Path::new(&target.toplevel),
@@ -430,7 +421,6 @@ async fn download_release(
     }))
 }
 
-/// What the handlers need from the environment.
 pub(crate) struct AppState {
     board: String,
     manifest_url: Option<String>,

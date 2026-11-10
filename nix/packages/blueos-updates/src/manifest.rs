@@ -1,15 +1,14 @@
 //! Release discovery from a published manifest.
 //!
-//! The daemon only lists what the manifest names and never applies anything on
-//! its own: an update is a user action, and the rollback machinery is what makes
-//! it safe to take one.
+//! The daemon only lists what the manifest names; an update is always a user
+//! action.
 
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 /// One published build. `toplevel` is the store path the publisher put in the
-/// binary cache, which is all a device needs to realise it.
+/// binary cache.
 #[derive(Deserialize, Serialize, Clone, ToSchema)]
 pub(crate) struct Release {
     pub(crate) board: String,
@@ -29,8 +28,8 @@ pub(crate) struct Manifest {
     releases: Vec<Release>,
 }
 
-/// Releases published for `board`, newest first. Without a manifest URL the
-/// vehicle was built for offline management, so the list is simply empty.
+/// Releases published for `board`, newest first. Without a manifest URL there
+/// is nothing to list.
 pub(crate) async fn releases(
     manifest_url: Option<&str>,
     board: &str,

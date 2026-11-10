@@ -1,8 +1,7 @@
 //! Startup configuration.
 //!
 //! Every setting is a flag with an environment variable behind it, so the unit
-//! file can configure the daemon declaratively while an operator can still
-//! override it by hand.
+//! file can configure the daemon and an operator can still override it.
 
 use std::net::SocketAddr;
 

@@ -1,9 +1,8 @@
 //! Switching the running system to another generation, and fetching published
 //! closures.
 //!
-//! Both go through the same commands `nixos-rebuild` uses, so the rollback
-//! pre-switch check arms itself exactly as it does for a manual deploy; there is
-//! deliberately no bookkeeping duplicated here.
+//! Both go through the commands `nixos-rebuild` uses, so the rollback
+//! pre-switch check arms itself as it does for a manual deploy.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitStatus;
@@ -11,8 +10,8 @@ use std::process::ExitStatus;
 use anyhow::{Context, bail};
 use tokio::process::Command;
 
-/// Where the detached switch writes its output. It is next to the rollback
-/// state file so both halves of an update are found in one place.
+/// Where the detached switch writes its output. Next to the rollback state
+/// file, so both halves of an update are found in one place.
 pub(crate) const SWITCH_LOG: &str = "/var/lib/blueos/updates/last-switch.log";
 
 pub(crate) struct Activation {
@@ -27,7 +26,7 @@ pub(crate) struct Activation {
 ///
 /// `nix-env --set` appends a generation whenever the store path differs from
 /// the profile's current target, so pointing the profile at a build that is
-/// already there duplicates it. Going back to an installed version is the
+/// already there would duplicate it. Going back to an installed version is the
 /// common case for a vehicle, so it switches the existing link instead.
 pub(crate) enum Selection {
     /// A generation link that already exists, reused rather than duplicated.
@@ -43,12 +42,10 @@ pub(crate) enum Selection {
 /// toplevel against the *running* system rather than the profile, so it still
 /// arms despite the profile having already moved.
 ///
-/// The switch is started, not awaited. It restarts every BlueOS unit, this
-/// daemon included, so the process answering this call is one of the processes
-/// the switch kills: waiting for it could only ever end in a dead client. The
-/// caller gets `Activation` as soon as the switch is queued and follows the
-/// outcome through the status endpoint, which reports the pending activation
-/// the rollback machinery records.
+/// The switch is started, not awaited: it restarts every BlueOS unit, this
+/// daemon included, so waiting could only end in a dead client. The caller gets
+/// `Activation` once the switch is queued and follows the outcome through the
+/// status endpoint.
 pub(crate) async fn activate(
     toplevel: &Path,
     selection: Selection,
@@ -81,8 +78,7 @@ pub(crate) async fn activate(
 
     // `boot` only installs the generation, so nothing takes effect until the
     // machine reboots, whatever the incoming kernel looks like. A `switch` only
-    // needs one when the kernel, initrd or init interface differ, which is what
-    // this compares, so it can be answered without waiting for the switch.
+    // needs one when the kernel, initrd or init interface differ.
     let reboot_required = mode == "boot" || crate::generations::reboot_required(toplevel);
 
     Ok(Activation {
@@ -95,17 +91,16 @@ pub(crate) async fn activate(
 /// Queue the generation's own `switch-to-configuration` in a transient unit and
 /// return, leaving it to run on its own.
 ///
-/// `--no-block` is the point: the switch is not part of this process's cgroup,
-/// and this process does not wait for it. That is what lets the switch stop and
-/// restart the daemon that started it, which is the normal case for an update.
+/// `--no-block` keeps the switch out of this process's cgroup and stops this
+/// process from waiting on it, which is what lets the switch restart the daemon
+/// that started it.
 ///
-/// Output goes to a file rather than `--pipe`. `--pipe` hands the unit's streams
-/// to this process, so this process dying — which the switch causes — would take
-/// the switch with it.
+/// Output goes to a file rather than `--pipe`: `--pipe` hands the unit's
+/// streams to this process, so this process dying would take the switch with it.
 ///
 /// The PATH is forwarded explicitly: a transient unit otherwise starts with
-/// systemd's own default, which lacks coreutils, and the rollback pre-switch
-/// check runs `readlink` before it does anything else.
+/// systemd's default, which lacks coreutils, and the rollback pre-switch check
+/// runs `readlink` before it does anything else.
 async fn start_switch(toplevel: &Path, mode: &str) -> anyhow::Result<()> {
     let log = PathBuf::from(SWITCH_LOG);
 
@@ -132,7 +127,7 @@ async fn start_switch(toplevel: &Path, mode: &str) -> anyhow::Result<()> {
         ))
         .arg(format!("--property=StandardOutput=file:{}", log.display()))
         // Truncates rather than appends, so the log always describes the
-        // activation the status endpoint is currently reporting.
+        // activation the status endpoint currently reports.
         .arg(format!("--property=StandardError=file:{}", log.display()))
         .arg(toplevel.join("bin/switch-to-configuration"))
         .arg(mode)
@@ -160,8 +155,8 @@ fn unique_suffix() -> String {
     )
 }
 
-/// Substitute a published closure from the binary cache. This is the "download"
-/// step: no Nix evaluation, just the store path the publisher recorded.
+/// Substitute a published closure from the binary cache: no Nix evaluation,
+/// just the store path the publisher recorded.
 pub(crate) async fn realise(toplevel: &str) -> anyhow::Result<()> {
     let (status, stderr) = run(
         Command::new("nix-store").args(["--realise", toplevel]),

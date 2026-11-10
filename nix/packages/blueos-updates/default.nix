@@ -16,10 +16,6 @@ rustPlatform.buildRustPackage {
 
   cargoLock.lockFile = ./Cargo.lock;
 
-  # nix-env, nix-store and switch-to-configuration are how a version is
-  # installed and activated, so they have to be on PATH rather than assumed
-  # from the host. systemd-run is what moves the switch out of this daemon's
-  # cgroup, so it is required too rather than taken from the host.
   nativeBuildInputs = [
     makeWrapper
     pkg-config
@@ -27,6 +23,8 @@ rustPlatform.buildRustPackage {
 
   buildInputs = [ aws-lc ];
 
+  # The daemon shells out to these, so they come from the wrapper rather than
+  # the host. systemd-run is what moves the switch out of this daemon's cgroup.
   postInstall = ''
     wrapProgram $out/bin/blueos-updates \
       --suffix PATH : ${

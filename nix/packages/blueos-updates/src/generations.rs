@@ -15,9 +15,9 @@ pub(crate) const CURRENT_SYSTEM: &str = "/run/current-system";
 pub(crate) const BOOTED_SYSTEM: &str = "/run/booted-system";
 pub(crate) const KNOWN_GOOD_ROOT: &str = "/nix/var/nix/gcroots/blueos/known-good";
 
-/// `etc/blueos/release.json`, written by modules/blueos/version.nix. Every
-/// generation carries its own copy, so a generation answers which BlueOS it is
-/// without evaluating any Nix.
+/// `etc/blueos/release.json`, written by modules/blueos/version.nix. Each
+/// generation carries its own copy, so no Nix evaluation is needed to identify
+/// it.
 #[derive(Deserialize, Clone)]
 pub(crate) struct Release {
     pub(crate) version: String,
@@ -90,7 +90,7 @@ fn read_generation(id: u32, link: &Path) -> anyhow::Result<Generation> {
 }
 
 /// Every generation on the profile, newest first. Reading the links rather than
-/// asking nix-env keeps this working without taking the profile lock.
+/// asking nix-env avoids taking the profile lock.
 pub(crate) fn all() -> anyhow::Result<Vec<Generation>> {
     let entries = fs::read_dir(PROFILE_DIR).context("cannot read the profile directory")?;
 
@@ -131,11 +131,9 @@ pub(crate) fn known_good() -> Option<PathBuf> {
 
 /// The one generation to present as the rollback target.
 ///
-/// Several links can point at a single closure: rebuilding an unchanged
-/// configuration makes a new generation for a build that is already there, so
-/// matching on the closure alone badges every one of them. Exactly one is
-/// chosen instead — the running generation when it is the recorded one,
-/// otherwise the newest that is.
+/// Several links can point at a single closure, so matching on the closure
+/// alone badges every one of them. Exactly one is chosen instead: the running
+/// generation when it is the recorded one, otherwise the newest that is.
 pub(crate) fn known_good_generation() -> Option<u32> {
     let target = known_good()?;
     let generations = all().ok()?;
