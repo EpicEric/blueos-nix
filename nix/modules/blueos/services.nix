@@ -1,8 +1,3 @@
-# One systemd unit per entry in core/start-blueos-core.
-#
-# The Python services are already wrapped by blueos-core: each $out/bin/<name>
-# sets PYTHONPATH to the service directory and puts the ArduPilot scripts on
-# PATH, so a unit only has to name the wrapper.
 {
   config,
   lib,
@@ -85,21 +80,12 @@ let
       partOf = [ "blueos.target" ];
       after = [ "network.target" ] ++ after;
       restartTriggers = [ blueos ];
-      # Units get coreutils only; the services shell out to host tools that
-      # live in the system profile.
       path = [ "/run/current-system/sw" ] ++ toolPath ++ path;
       environment = {
         MAV_SYSTEM_ID = toString cfg.mavlink.systemId;
         MAV_COMPONENT_ID_ONBOARD_COMPUTER4 = toString cfg.mavlink.componentId;
-        # Reported by commonwealth.utils.general.blueos_version(), which feeds
-        # the helper heartbeat, the host log dumps and Sentry. environment.variables
-        # only reaches PAM sessions, so units need it here.
         GIT_DESCRIBE_TAGS = cfg.gitDescribe;
         RUST_BACKTRACE = "1";
-        # glibc defaults this to 1 on aarch64, so malloc advises the heap with
-        # MADV_HUGEPAGE. This kernel runs THP in madvise mode, so each service
-        # heap becomes 2 MiB pages: part of every page goes unused, and zram
-        # gets pages too coarse to compress well.
         GLIBC_TUNABLES = "glibc.malloc.hugetlb=0";
       }
       // environment;
@@ -128,8 +114,7 @@ in
     users.groups.blueos = { };
 
     systemd.tmpfiles.rules = [
-      # ardupilot_manager chmods the file before installing it, so it wants a
-      # copy rather than a link into the store.
+      # ardupilot_manager chmods the file before installing it
       "C+ /root/blueos-files/ardupilot-manager/default/ardupilot_navigator64 - - - - ${
         pkgs.fetchurl {
           url = "https://firmware.ardupilot.org/Sub/stable-4.5.3/navigator64/ardusub";
@@ -139,8 +124,8 @@ in
     ]
     ++
       optionals cfg.raspberryPi.enable
-        # ArduSub identifies the board from the soc node, which this kernel
-        # names soc@107c000000, so a view with the expected name is mounted.
+        # ArduSub identifies the board from the soc node,
+        # which this kernel names soc@107c000000
         [
           "C /run/blueos/device-tree - - - - /sys/firmware/devicetree/base"
           "L /run/blueos/device-tree/soc - - - - soc@107c000000"
@@ -152,10 +137,6 @@ in
     };
 
     systemd.services = {
-      # Extensions read these through the host root: major_tom opens
-      # /host/etc/blueos/{hardware-uuid,uuid} at import time, and commonwealth's
-      # local_*_identifier() reads them here. Upstream has both files created by
-      # start-blueos-core and helper, which this system does not run.
       blueos-uuids = {
         description = "BlueOS hardware and software uuids";
         wantedBy = [ "blueos.target" ];
@@ -168,8 +149,6 @@ in
           ${cfg.packages.machineid-cli}/bin/machineid-cli \
             --key blueos --parts cpu-cores cpuid mac-address > /etc/blueos/hardware-uuid
 
-          # Stable across boots and shared with the cloud, so it is written once
-          # rather than regenerated like the hardware uuid.
           if [ ! -s /etc/blueos/uuid ]; then
             ${pkgs.util-linux}/bin/uuidgen | ${pkgs.coreutils}/bin/tr -d '-' > /etc/blueos/uuid
           fi
@@ -180,8 +159,6 @@ in
         name = "ardupilot_manager";
         nice = -19;
         exec = python "ardupilot_manager" [ ];
-        # ArduSub binaries are glibc dynamic and downloaded at runtime; units do
-        # not inherit the session variables nix-ld reads.
         environment = {
           inherit (config.environment.variables) NIX_LD NIX_LD_LIBRARY_PATH;
         };
@@ -190,7 +167,6 @@ in
             BindReadOnlyPaths = [ "/run/blueos/device-tree:/sys/firmware/devicetree/base" ];
           }
           // {
-            # firmware flashing and MAVLink routing need the serial ports
             PrivateDevices = false;
             RestrictAddressFamilies = [ ];
           };
@@ -214,7 +190,6 @@ in
             --verbose
         '';
         environment.GST_PLUGIN_SYSTEM_PATH_1_0 = gstPluginPath;
-        # the encoder and camera plugins are dlopened at runtime
         serviceConfig.PrivateDevices = false;
       };
 
@@ -232,7 +207,6 @@ in
       cable-guy = mkService {
         name = "cable_guy";
         exec = python "cable_guy" [ ];
-        # sets addresses and runs its own dhcpcd and dnsmasq
         serviceConfig = {
           PrivateDevices = false;
           RestrictAddressFamilies = [ ];
@@ -263,7 +237,6 @@ in
         ];
         serviceConfig = {
           RestrictAddressFamilies = [ ];
-          # talks to the wpa_supplicant socket and to NetworkManager
           PrivateDevices = false;
         };
       };
@@ -273,9 +246,6 @@ in
         exec = ''
           ${cfg.packages.zenoh}/bin/zenohd -c ${zenohConfig}
         '';
-        # Upstream sets this so the filesystem backend has a root to place
-        # storages under. Nothing declares a storage yet, but the variable has
-        # to exist before one can be added without touching the unit.
         environment.ZENOH_BACKEND_FS_ROOT = "${userdata}/zenoh";
       };
 
@@ -292,7 +262,6 @@ in
         name = "beacon";
         memoryMax = 250;
         exec = python "beacon" [ ];
-        # announces itself over multicast DNS and UDP
         serviceConfig.RestrictAddressFamilies = [ ];
       };
 
@@ -321,9 +290,7 @@ in
         name = "helper";
         memoryMax = 250;
         exec = python "helper" [ ];
-        # commonwealth reads the uuid while this module is imported
         after = [ "blueos-uuids.service" ];
-        # reads the nginx config and reloads nginx through its pid file
         serviceConfig.ReadOnlyPaths = [ "/etc/blueos" ];
       };
 
@@ -361,10 +328,6 @@ in
         exec = python "bag_of_holding" [ ];
       };
 
-      # Upstream ships this entry commented out, but the frontend's RecordsView
-      # still calls /recorder-extractor/ and nginx still proxies it, so it is
-      # enabled here. Without it the recordings page loads and every request
-      # fails.
       recorder-extractor = mkService {
         name = "recorder_extractor";
         memoryMax = 250;
@@ -376,8 +339,6 @@ in
         name = "disk_usage";
         memoryMax = 250;
         exec = python "disk_usage" [ ];
-        # disktest benchmarks the card by writing a temporary file under /tmp,
-        # and the service reports on the whole filesystem rather than a device.
         serviceConfig.PrivateDevices = false;
       };
 
@@ -385,7 +346,6 @@ in
         name = "customization";
         memoryMax = 250;
         exec = python "customization" [ ];
-        # stores uploaded .glb models and branding files in userdata
         serviceConfig.ReadWritePaths = [ userdata ];
       };
 
@@ -397,7 +357,6 @@ in
           ${cfg.packages.linux2rest}/bin/linux2rest \
             --log-settings netstat=30,platform=10,serial-ports=10,cpu=10,disk=30,info=10,memory=10,network=10,process=60,temperature=10,unix-time-seconds=10,usb=60
         '';
-        # reports on host processes, devices and interfaces
         serviceConfig = {
           ProtectProc = "default";
           PrivateDevices = false;
@@ -421,16 +380,11 @@ in
               --log=stdout --root=/shortcuts \
               --database=/etc/filebrowser/filebrowser.db
           fi
-          # Every entry under /shortcuts is a symlink out of the scope, which
-          # newer filebrowser refuses to serve unless this is set.
+
           filebrowser config set --followExternalSymlinks \
             --database=/etc/filebrowser/filebrowser.db
-          # Databases created by the old preStart can hold no users, because
-          # filebrowser rejects the default password. Nothing can log in then.
+
           if [ "$(filebrowser users ls --database=/etc/filebrowser/filebrowser.db | wc -l)" -lt 2 ]; then
-            # filebrowser rejects passwords that are short or guessable, and
-            # BlueOS's default is both. With auth.method=noauth the password is
-            # never checked, so a random one is used to create the user.
             filebrowser users add ${cfg.user.name} "$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 32)" \
               --database=/etc/filebrowser/filebrowser.db
           fi
@@ -447,7 +401,6 @@ in
         memoryMax = 250;
         nice = 19;
         path = [ pkgs.tmux ];
-        # -W: ttyd 1.7 runs read only without it
         exec = ''${pkgs.ttyd}/bin/ttyd -W -p 8088 ${pkgs.runtimeShell} -c "tmux attach -t user_terminal || tmux new -s user_terminal"'';
       };
     };
