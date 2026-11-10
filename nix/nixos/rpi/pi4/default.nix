@@ -1,4 +1,5 @@
-# Raspberry Pi 4 / CM4 with a Navigator hat, mirroring install/boards/bcm_27xx.sh.
+# Raspberry Pi 4 / CM4 with a Navigator hat, mirroring install/boards/bcm_27xx.sh
+
 {
   lib,
   ...
@@ -9,8 +10,6 @@ in
 {
   imports = [ ../common.nix ];
 
-  # dtparam lines render before any overlay, which is what the board wants: a
-  # dtparam after a dtoverlay configures that overlay instead of the board.
   hardware.raspberry-pi.configtxt = {
     settings.pi4 = {
       dtparam = [
@@ -25,8 +24,6 @@ in
       ];
     };
 
-    # The Navigators expose four UARTs and three i2c buses. i2c6 keeps its
-    # default pins, so only the baudrate differs.
     deviceTreeOverlays.pi4 = [
       { uart1 = { }; }
       { uart3 = { }; }
@@ -42,23 +39,15 @@ in
       { i2c6.baudrate = 400000; }
       { spi0-led = { }; }
       { spi1-3cs = { }; }
-      # Binds the at24 driver to the Navigator's ID EEPROM at 0x50, which the
-      # EEPROM endpoints read through /sys. The Pi 5 board script does not
-      # load it.
       { navigator-eeprom = { }; }
       { dwc2.dr_mode = "otg"; }
     ];
   };
 
-  # otg_mode is the CM4 default from nixos-hardware, but it claims the USB
-  # controller that the dwc2 overlay needs for gadget mode.
   hardware.raspberry-pi.configtxt.settings.cm4.otg_mode = lib.mkForce null;
 
   hardware.i2c.enable = mkDefault true;
 
-  # The vendor kernel builds 8250 with zero runtime UARTs and relies on the
-  # GPU firmware to append this argument, which U-Boot does not forward.
-  # Without it the mini-UART (/dev/ttyS0, Navigator serial port C) never exists.
   boot.kernelParams = [ "8250.nr_uarts=1" ];
 
   boot.kernelModules = [
