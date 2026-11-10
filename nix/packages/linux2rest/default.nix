@@ -36,6 +36,7 @@ rustPlatform.buildRustPackage {
     ./no-download.patch
     ./journal-forward-debug.patch
     ./journal-buffer-cap.patch
+    ./serial-by-path-missing.patch
   ];
 
   postPatch = ''
