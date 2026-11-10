@@ -4,8 +4,8 @@
   rustPlatform,
 }:
 let
-  # The ROS message definitions are a submodule, which the release archive does
-  # not carry. Only its msgs/ directory is compiled in, through include_dir!.
+  # ROS message definitions, a submodule the release archive lacks. Only msgs/
+  # is compiled in, via include_dir!.
   zBlueberry = fetchFromGitHub {
     owner = "patrickelectric";
     repo = "zBlueberry";
