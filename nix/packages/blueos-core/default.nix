@@ -15,12 +15,11 @@
   linux2rest,
   machineid-cli,
   makeWrapper,
-  mavlink-router,
   mavlink-server,
   mavlink2rest,
   mavlink-camera-manager,
-  mavp2p,
   mcap,
+
   mcap-foxglove-video-extract,
   nginx,
   procps,
@@ -122,10 +121,8 @@ let
     linux2rest
     machineid-cli
     mavlink-camera-manager
-    mavlink-router
     mavlink-server
     mavlink2rest
-    mavp2p
     mcap
     mcap-foxglove-video-extract
     nginx

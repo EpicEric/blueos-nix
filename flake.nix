@@ -59,15 +59,11 @@
 
         machineid-cli = pkgs.callPackage ./nix/packages/machineid-cli { };
 
-        mavlink-router = pkgs.callPackage ./nix/packages/mavlink-router { };
-
         mavlink-server = pkgs.callPackage ./nix/packages/mavlink-server { };
 
         mavlink2rest = pkgs.callPackage ./nix/packages/mavlink2rest { };
 
         mavlink-camera-manager = pkgs.callPackage ./nix/packages/mavlink-camera-manager { };
-
-        mavp2p = pkgs.callPackage ./nix/packages/mavp2p { };
 
         mcap = pkgs.mcap-cli;
 
@@ -137,11 +133,9 @@
               disktest
               linux2rest
               machineid-cli
-              mavlink-router
               mavlink-server
               mavlink2rest
               mavlink-camera-manager
-              mavp2p
               mcap
               mcap-foxglove-video-extract
               swagger-ui

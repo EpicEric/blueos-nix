@@ -51,9 +51,7 @@ let
     cfg.packages.bridges
     cfg.packages.disktest
     cfg.packages.machineid-cli
-    cfg.packages.mavlink-router
     cfg.packages.mavlink-server
-    cfg.packages.mavp2p
     cfg.packages.mcap
     cfg.packages.mcap-foxglove-video-extract
     pkgs.gst_all_1.gst-plugins-base

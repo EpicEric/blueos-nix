@@ -85,25 +85,11 @@ in
         description = "Serial to UDP bridge, used by bridget and ping.";
       };
 
-      mavlink-router = mkOption {
-        type = types.package;
-        default = pkgs.callPackage ../../packages/mavlink-router { };
-        defaultText = lib.literalMD "this flake's package";
-        description = "MAVLink router, one of the routers ardupilot_manager can drive.";
-      };
-
       mavlink-server = mkOption {
         type = types.package;
         default = pkgs.callPackage ../../packages/mavlink-server { };
         defaultText = lib.literalMD "this flake's package";
-        description = "MAVLink server, one of the routers ardupilot_manager can drive.";
-      };
-
-      mavp2p = mkOption {
-        type = types.package;
-        default = pkgs.callPackage ../../packages/mavp2p { };
-        defaultText = lib.literalMD "this flake's package";
-        description = "MAVLink point-to-point router.";
+        description = "MAVLink router and its web interface, the one ardupilot_manager drives.";
       };
 
       mavlink2rest = mkOption {
