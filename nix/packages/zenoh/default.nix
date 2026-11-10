@@ -1,8 +1,9 @@
-# Zenoh 1.9.0, the version the pinned BlueOS uses for all four pieces: the
-# router, its rest and storage plugins, the remote-api websocket plugin, and
-# the Python and TypeScript clients. The plugin ABI check compares version and
-# features for equality, so the daemon cannot come from nixpkgs: its 1.10.1
-# refuses to load a 1.9.0 plugin, and 1.9.0 is what every client here speaks.
+# Zenoh 1.9.0, the version the pinned BlueOS uses for every piece: the router,
+# its rest and storage plugins, the remote-api websocket plugin, and the Python
+# and TypeScript clients.
+#
+# The plugin ABI check compares version and features for equality, so the daemon
+# cannot come from nixpkgs: its 1.10.1 refuses to load a 1.9.0 plugin.
 {
   fetchFromGitHub,
   lib,
@@ -21,8 +22,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   cargoHash = "sha256-1PjtZ5/bAnLlMbkcKAA6DCKDafItGiATjct5Pv8muas=";
 
-  # The examples are not installed, but excluding them and the two template
-  # plugins keeps the build to the router and the plugins that ship with it.
+  # Excluding the examples and the two template plugins keeps the build to the
+  # router and the plugins that ship with it.
   cargoBuildFlags = [
     "--package"
     "zenoh"
