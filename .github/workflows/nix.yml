@@ -122,6 +122,51 @@ jobs:
         with:
           files: image/sd-image/*.img.zst
 
+  # Cache the system closure (QEMU image requires KVM)
+  qemu-system:
+    name: Cache the QEMU guest system (${{ matrix.guest }})
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        guest: [guest, native]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Free disk space
+        uses: wimpysworld/nothing-but-nix@687c797a730352432950c707ab493fcc951818d7 # v10
+
+      - name: Install Nix
+        uses: NixOS/nix-installer-action@62c1943b776c509394b550f3f983adc14e9212d6 # v1.0.0
+        with:
+          add-channel: "true"
+          extra-conf: |
+            accept-flake-config = true
+            extra-substituters = ${{ vars.NIKS3_SERVER_URL }}
+            extra-trusted-public-keys = ${{ vars.NIKS3_PUBLIC_KEY }}
+            max-jobs = 1
+
+      - name: Install niks3
+        run: nix profile install nixpkgs#niks3
+
+      - name: Build the system
+        run: |
+          nix build --no-link --print-out-paths \
+            ".#nixosConfigurations.blueos-${{ matrix.guest }}.config.system.build.toplevel" \
+            > "$RUNNER_TEMP/toplevel"
+
+      - name: Push the system to the cache
+        if: github.event_name != 'pull_request'
+        env:
+          NIKS3_AUTH_TOKEN_FILE: "/tmp/niks3-token"
+          NIKS3_SERVER_URL: ${{ vars.NIKS3_SERVER_URL }}
+        run: |
+          echo ${{ secrets.NIKS3_AUTH_TOKEN }} > $NIKS3_AUTH_TOKEN_FILE
+          niks3 push "$(cat "$RUNNER_TEMP/toplevel")"
+          niks3 pins create "blueos-${{ matrix.guest }}-system" "$(cat "$RUNNER_TEMP/toplevel")"
+
   publish:
     name: Publish the release manifest
     needs: image
