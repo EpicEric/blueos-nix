@@ -1,20 +1,3 @@
 {
-  "releases": [
-    {
-      "board": "pi5",
-      "channel": "stable",
-      "published": "2026-11-06T19:58:06Z",
-      "revision": "2b918ed7ea253f0e5ad2f1d27ecff7c4b437a106",
-      "toplevel": "/nix/store/788kampkq4v0l79s5jnb66ygiqhcinfc-nixos-system-unnamed-blueos-1.4.7-0-g2b918ed-26.11.20261101.0bb2eed",
-      "version": "1.4.7"
-    },
-    {
-      "board": "pi4",
-      "channel": "stable",
-      "published": "2026-11-06T19:58:06Z",
-      "revision": "2b918ed7ea253f0e5ad2f1d27ecff7c4b437a106",
-      "toplevel": "/nix/store/5x772i009jxyfwnfmpjc6r68bnlk8nia-nixos-system-unnamed-blueos-1.4.7-0-g2b918ed-26.11.20261101.0bb2eed",
-      "version": "1.4.7"
-    }
-  ]
+  "releases": []
 }
