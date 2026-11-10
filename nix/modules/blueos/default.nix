@@ -10,6 +10,7 @@ let
     mkIf
     mkOption
     mkDefault
+    mkForce
     types
     ;
 
@@ -19,13 +20,8 @@ let
   blueos = cfg.package;
   src = blueos.passthru.src;
 
-  # The version lives in version.nix, which derives it from the package rather
-  # than from the source tag: the source is pinned by commit, so it has none.
   version = cfg.version;
 
-  # nginx runs as an unprivileged user under systemd, so the directives that
-  # only make sense in the container (dropping privileges itself, owning the
-  # pid file) are removed rather than made to match.
   nginxConf =
     builtins.replaceStrings
       [
@@ -36,11 +32,7 @@ let
         "include cors.conf;"
         "/home/pi/frontend"
         "/home/pi/tools/nginx/extensions"
-        # The version chooser service is gone: versions are NixOS generations
-        # now, served by blueos-updates. The pinned nginx.conf still proxies the
-        # container's chooser port under this path, and the frontend's
-        # VersionChooserNixos.vue calls /updates/v1.0 on the same origin, so the
-        # location name is what has to change.
+        # Version chooser is replaced with blueos-updates
         "location /version-chooser/ {"
       ]
       [
@@ -292,12 +284,9 @@ in
 
     networking.hostName = mkDefault "";
 
-    # BlueOS extensions listen on ports of their own choosing, so a per-port
-    # allowlist cannot work; the container image behaves the same way.
     networking.firewall.enable = mkDefault false;
 
-    # cable_guy drives usb0 itself over pyroute2, but needs
-    # NetworkManager on D-Bus to pick its handler.
+    # cable_guy drives usb0 itself, but needs NetworkManager on D-Bus
     networking.networkmanager = {
       enable = mkDefault true;
       unmanaged = [
@@ -305,9 +294,8 @@ in
         "interface-name:uap0"
       ];
     };
-    # ModemManager claims the autopilot's serial ports. NetworkManager's module
-    # turns it on without mkDefault, so this has to force it off.
-    networking.modemmanager.enable = lib.mkForce false;
+    # ModemManager claims the autopilot's serial ports
+    networking.modemmanager.enable = mkForce false;
 
     services.avahi = {
       enable = mkDefault true;
@@ -327,8 +315,6 @@ in
     };
 
     services.openssh.enable = mkDefault true;
-    # commonwealth copies files as root over ssh into the user account, and
-    # falls back to sshpass when the key does not exist yet.
     security.sudo.wheelNeedsPassword = mkDefault false;
 
     nix.settings = {
@@ -370,7 +356,7 @@ in
       podman = { };
     };
 
-    # Docker exists on a BlueOS host for extensions only.
+    # Podman exists for extensions only
     virtualisation = {
       podman = {
         enable = mkDefault true;
@@ -382,16 +368,15 @@ in
         enable = mkDefault true;
         containersConf.settings.engine = {
           compose_warning_logs = mkDefault false;
-          # Podman reserves published ports with bind() alone, which leaves no
-          # LISTEN socket. helper discovers extensions by scanning for one, so
-          # every extension on a bridge network disappears from the UI.
+          # By default, Podman binds ports without listening,
+          # making services undiscoverable by helper
           force_port_listen = mkDefault true;
         };
         registries.settings.unqualified-search-registries = mkDefault [ "docker.io" ];
       };
     };
 
-    # ardupilot_manager downloads glibc-dynamic ArduSub binaries at runtime.
+    # ardupilot_manager downloads glibc-dynamic ArduSub binaries at runtime
     programs.nix-ld.enable = mkDefault true;
 
     environment.systemPackages = [
@@ -412,13 +397,10 @@ in
     services.nginx = {
       enable = mkDefault true;
       config = nginxConf;
-      # gixy rejects the /cache/ proxy (it cannot tell that the URL is
-      # operator-supplied), so the check cannot pass for this config.
       validateConfigFile = false;
     };
 
-    # helper reloads nginx through this pid file and parses the config to map
-    # ports back to service names.
+    # helper reloads nginx through this pid file
     environment.etc."blueos/nginx.conf".text = nginxConf;
 
     systemd.tmpfiles.rules = [
@@ -428,22 +410,16 @@ in
       "d /usr/blueos/userdata/settings 0777 root root -"
       "d /usr/blueos/userdata/firmware 0777 root root -"
       "d /usr/blueos/extensions 0777 root root -"
-      # recorder writes MCAP files here and recorder_extractor reads them back
       "d /usr/blueos/userdata/recorder 0777 root root -"
-      # customization serves uploaded models, branding and styles from these
       "d /usr/blueos/userdata/modeloverrides 0777 root root -"
       "d /usr/blueos/userdata/branding 0777 root root -"
       "d /usr/blueos/userdata/styles 0777 root root -"
-      # the swagger and redoc assets that use_local_docs_assets() mounts
       "L+ /usr/blueos/static - - - - ${blueos.passthru.swagger-ui}"
-      # root for the zenoh filesystem backend, named by ZENOH_BACKEND_FS_ROOT
       "d /usr/blueos/userdata/zenoh 0777 root root -"
       "d /etc/blueos 0755 root root -"
       "d /etc/filebrowser 0755 root root -"
       "d /shortcuts 0755 root root -"
       "d /root/blueos-files 0755 root root -"
-      # commander's setup_ssh() writes the manager's key here without creating
-      # the directory, so it fails on every boot if this is missing.
       "d /home/${cfg.user.name}/.ssh 0700 ${cfg.user.name} users -"
       "d /root/.config/ardupilot-manager/logs 0755 root root -"
       "L /shortcuts/userdata - - - - /usr/blueos/userdata"
@@ -453,16 +429,11 @@ in
       "f /etc/hostname 0644 root root - blueos"
     ];
 
-    # nginx serves uploads and userdata from these two trees, and proxies
-    # /docker/ to the socket.
     systemd.services.nginx.serviceConfig = {
       ReadWritePaths = [
         "/usr/blueos"
         "/var/lib/blueos"
       ];
-      # The pinned BlueOS nginx.conf writes access_log and error_log under
-      # /var/log/nginx, but the NixOS module logs to the journal and does not
-      # create the directory.
       LogsDirectory = "nginx";
       SupplementaryGroups = [
         "docker"
@@ -479,10 +450,8 @@ in
       "vm.swappiness" = 10;
     };
 
-    # The journal has no size limit by default, which on a 2GB board means a
-    # runaway writer (see linux2rest's journal forwarding) can fill the card and
-    # pin a matching amount of page cache. Upstream's log_zipper is gone, so
-    # this is the only bound on /var/log/journal.
+    # The journal has no size limit by default, which on a constrained
+    # board means a runaway writer can fill the card
     services.journald.settings.Journal = {
       SystemMaxUse = "64M";
       RuntimeMaxUse = "32M";
@@ -503,15 +472,11 @@ in
       "g_ether"
       "slcan"
     ];
-    # Appended, never forced: the initrd adds `root=` to this list, and mkForce
-    # would drop it and leave the system unbootable.
     boot.kernelParams = mkIf cfg.raspberryPi.enable [
       "console=tty1"
       "cgroup_enable=cpuset"
       "cgroup_memory=1"
       "cgroup_enable=memory"
-      # ArduPilot maps the GPIO registers through /dev/mem, which nixpkgs'
-      # strict /dev/mem refuses once a driver has claimed the range.
       "iomem=relaxed"
     ];
   };
