@@ -48,7 +48,6 @@
         "aarch64-linux"
       ];
 
-      # The packages that compile native code, which is what makes a build slow.
       compiledPackages = pkgs: {
         bridges = pkgs.callPackage ./nix/packages/bridges { };
 
@@ -81,10 +80,6 @@
         zenoh-plugin-remote-api = pkgs.callPackage ./nix/packages/zenoh-plugin-remote-api { };
       };
 
-      # One SD image per supported board. nixos-hardware supplies the kernel and
-      # the firmware partition handling; the board file only adds what the
-      # Navigator needs on top. These are aarch64-linux systems, so building
-      # them needs an ARM host or QEMU binfmt.
       mkBlueOS =
         { board }:
         lib.nixosSystem {
@@ -92,12 +87,7 @@
           specialArgs = {
             blueos = self.packages.aarch64-linux.blueos-core;
             sdImageModule = "${nixpkgs}/nixos/modules/installer/sd-card/sd-image.nix";
-            # The flake's own U-Boot build, which has the bootcount fallback the
-            # stock package lacks. Passed as an argument because the module's
-            # `pkgs` is nixpkgs, which does not know about this repo's packages.
             ubootPackage = self.packages.aarch64-linux.uboot-rpi;
-            # Null for a dirty tree and for a plain path flake; version.nix
-            # reports that as "unknown" rather than failing the build.
             blueosNixRev = self.rev or self.dirtyRev or null;
           };
           modules = [
@@ -106,11 +96,6 @@
             ./nix/nixos/rpi/pi${board}
             {
               services.blueos.board = "pi${board}";
-              # Where the image workflow publishes what it cached, so a device
-              # that boots this image can offer its own successors. Written out
-              # rather than derived: Nix evaluates this without knowing which
-              # repository it is being read from, which is also why a fork
-              # publishing its own builds has to override it.
               services.blueos.updates.manifestUrl = "https://epiceric.github.io/blueos-nix/manifest.json";
             }
           ];
@@ -167,10 +152,6 @@
           default = self.packages.${system}.blueos-core;
         }
 
-        # A Pi bootloader, so it only exists for the architecture the images
-        # are built for. On x86_64 the attribute would name an aarch64
-        # derivation that nothing there can use, and `nix build` would try to
-        # build it through QEMU.
         // lib.optionalAttrs (system == "aarch64-linux") {
           uboot-rpi = pkgs.callPackage ./nix/packages/uboot-rpi { };
         }
