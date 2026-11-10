@@ -96,6 +96,32 @@ if a slow x86_64 build ever becomes a problem again.
 
 7. Triage the patches (see below), then let CI build the images.
 
+## QEMU guests
+
+Two x86_64 guests exist for the end-to-end tests, sharing `nix/nixos/qemu/common.nix`.
+They are different things and answer different questions:
+
+- `blueos-guest` is a Docker host. It contains no BlueOS; the build under test
+  arrives as a container selected by the test run, so the image never tracks a
+  BlueOS revision and can serve upstream's suite at any commit.
+- `blueos-native` runs `services.blueos` from this repo's pin. It exists to catch
+  regressions in the port, and cannot test an upstream PR without moving the pin.
+
+```fish
+nix build .#packages.x86_64-linux.blueos-guest-qemu
+nix build .#packages.x86_64-linux.blueos-native-qemu
+```
+
+`system.build.images.qemu` runs its install step inside `vmTools.runInLinuxVM`,
+so building either image requires the `kvm` system feature. The system closure
+does not, which is why CI caches that instead: `qemu-system` in `nix.yml` builds
+and pins `config.system.build.toplevel`, and an image built from a cached closure
+needs no network, since `nixos-install` is called with `--substituters ""`.
+
+`blueos-native` sets `rollback.enable = false`. `rollback.nix` reads
+`config.hardware.raspberry-pi.firmware.path`, which only exists with
+nixos-hardware's Pi modules, so the option cannot evaluate on x86_64.
+
 ## Patch policy
 
 Upstream is a container image: it installs services into `/home/pi`, runs them
