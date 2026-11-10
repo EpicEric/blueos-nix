@@ -37,6 +37,7 @@ rustPlatform.buildRustPackage {
     ./journal-forward-debug.patch
     ./journal-buffer-cap.patch
     ./serial-by-path-missing.patch
+    ./throttled-via-vcgencmd.patch
   ];
 
   postPatch = ''

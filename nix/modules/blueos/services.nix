@@ -392,6 +392,7 @@ in
       linux2rest = mkService {
         name = "linux2rest";
         memoryMax = 250;
+        path = [ pkgs.libraspberrypi ];
         exec = ''
           ${cfg.packages.linux2rest}/bin/linux2rest \
             --log-settings netstat=30,platform=10,serial-ports=10,cpu=10,disk=30,info=10,memory=10,network=10,process=60,temperature=10,unix-time-seconds=10,usb=60
