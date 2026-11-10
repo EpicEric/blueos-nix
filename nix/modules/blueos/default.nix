@@ -394,18 +394,19 @@ in
     # ardupilot_manager downloads glibc-dynamic ArduSub binaries at runtime.
     programs.nix-ld.enable = mkDefault true;
 
-    environment.systemPackages = with pkgs; [
-      sshpass
-      openssh
-      dhcpcd
-      dnsmasq
-      linux-wifi-hotspot
-      iw
-      ifmetric
-      iproute2
-      util-linux
-      i2c-tools
-      tmux
+    environment.systemPackages = [
+      pkgs.sshpass
+      pkgs.openssh
+      pkgs.dhcpcd
+      pkgs.dnsmasq
+      pkgs.linux-wifi-hotspot
+      pkgs.iw
+      pkgs.ifmetric
+      pkgs.iproute2
+      pkgs.util-linux
+      pkgs.i2c-tools
+      pkgs.libraspberrypi
+      pkgs.tmux
     ];
 
     services.nginx = {
