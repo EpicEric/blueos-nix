@@ -1,19 +1,13 @@
 # Upstream PR 4698, "core: frontend: components: version-chooser: Support
-# NixOS update backend". It replaces the container version chooser with a
-# generation chooser as *Nixos.vue siblings selected at build time by
-# VITE_BLUEOS_UPDATES, which is the value blueos-frontend already exports.
+# NixOS update backend". Replaces the container version chooser with a
+# generation chooser, as *Nixos.vue siblings selected at build time by
+# VITE_BLUEOS_UPDATES.
 #
-# Kept as a patch only until that PR lands. It was applied as a patch rather
-# than rebased from blueos-nix's own 3,170-line version because the upstream
-# form is what will be maintained.
+# Base: db6f25af759f601bc2683717ceca1a07d73e22bf, the PR head. 13 commits on
+# top of the pinned rev, squashed into one diff so it applies to the pin. It
+# includes the ttag imports and unique component tags the PR was missing.
 #
-# Base: db6f25af759f601bc2683717ceca1a07d73e22bf, the PR head. The PR is 13
-# commits on top of the pinned rev, and this is that whole range as one diff,
-# so it applies to the pin and needs no intermediate patches. It includes the
-# ttag imports and unique component tags the PR was missing, without which the
-# chooser and the health cards render the container variants or crash outright.
-#
-# Delete once merged. Any change to the PR means regenerating this file:
+# Delete once merged. Regenerate with:
 #   git -C <BlueOS> diff <pinned-rev> <PR-head>
 diff --git a/core/frontend/src/App.vue b/core/frontend/src/App.vue
 index bfc3000113..12cb858204 100644

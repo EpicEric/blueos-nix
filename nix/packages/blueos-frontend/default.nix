@@ -10,8 +10,7 @@
 let
   inherit (blueos-source) version src rev date;
 
-  # Submodules are not part of the GitHub archive; the revisions match the ones
-  # the tag records in .gitmodules.
+  # Submodule revisions match the ones the tag records in .gitmodules.
   submodules = {
     "core/frontend/public/assets/ArduPilot-Parameter-Repository" = fetchFromGitHub {
       owner = "ArduPilot";
@@ -121,28 +120,20 @@ stdenvNoCC.mkDerivation {
   buildPhase = ''
     runHook preBuild
 
-    # Vite reads VITE_* from the environment, and App.vue parses this as a git
-    # describe string to build a GitHub link. There is no `tags/` prefix
-    # because this is not a tagged build: convertGitDescribeToTag then returns
-    # undefined and the link goes to the commit, which is the truthful target.
-    # The `-g` hash is still needed, and so is the same shape main.ts checks
-    # before enabling Sentry. The frontend is baked at build time, so this
-    # cannot be set at runtime like the backend's GIT_DESCRIBE_TAGS.
+    # Parsed by App.vue as a git describe string. No `tags/` prefix because this
+    # is not a tagged build: the link then goes to the commit. The `-g` hash
+    # keeps the shape main.ts checks before enabling Sentry.
     export VITE_APP_GIT_DESCRIBE="${version}-0-g${builtins.substring 0 7 rev}"
 
-    # Pinned rather than read from the clock: this string ends up inside the
-    # bundle, so a wall-clock value would make every build a different store
-    # path and force a rebuild everywhere, cache included.
+    # Pinned rather than read from the clock: a wall-clock value would make
+    # every build a different store path.
     export VITE_BUILD_DATE="${date}"
 
-    # Selects the generation-based version chooser. BlueOS detects available
-    # versions differently under NixOS, so the frontend ships both and this
-    # picks one at build time.
+    # Selects the generation-based version chooser.
     export VITE_BLUEOS_UPDATES=nixos
 
-    # The bundle outgrew node's default heap once the Zenoh inspector and the
-    # video decoders landed; upstream's Dockerfile raises it for the same
-    # reason. Without this the build dies with "JavaScript heap out of memory".
+    # Upstream's Dockerfile raises this for the same reason: the bundle
+    # otherwise dies with "JavaScript heap out of memory".
     export NODE_OPTIONS=--max-old-space-size=8192
 
     pushd core/frontend
