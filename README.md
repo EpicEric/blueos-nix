@@ -7,16 +7,27 @@ NixOS support for BlueOS on Raspberry Pis 4 and 5.
 
 ## What this tracks
 
-`nix/packages/blueos-source` pins one specific commit of
+The `blueos` flake input pins one specific commit of
 [BlueRobotics/BlueOS](https://github.com/BlueRobotics/BlueOS), never a branch.
 That commit is the only place the BlueOS version comes from: `blueos-core`,
 `blueos-frontend` and the image all read it, so the version they report cannot
 drift from the code they contain.
 
-Pinning a commit rather than a branch is what keeps `nix build` reproducible: a
-branch ref would make the result depend on when the build ran, and the source
-hash would stop meaning anything. Advancing the pin is therefore a deliberate
-bump, done by hand and reviewed, rather than something that happens on its own.
+The rev is in the input's URL rather than left to `flake.lock`, so
+`nix flake update` cannot move it. Pinning a commit rather than a branch is what
+keeps `nix build` reproducible: a branch ref would make the result depend on
+when the build ran. Advancing the pin is therefore a deliberate bump, done by
+hand and reviewed, rather than something that happens on its own.
+
+The input uses `git+https` with `submodules=1`. The `github:` shorthand drops
+that flag without reporting it, which leaves the frontend's submodule
+directories empty and fails late in the frontend build with a lock file that
+looks valid. Submodule content arrives with the input, so this repo pins no
+submodule revisions of its own.
+
+`nix/packages/blueos-source` therefore records only what is not a property of
+the commit: `version` and `channel`. The revision and build date are read from
+the input (`rev`, `lastModifiedDate`).
 
 The pin currently sits between releases, so the version is a literal
 (`1.5.0-dev`) instead of something derived from a tag, and the channel is
@@ -50,43 +61,24 @@ if a slow x86_64 build ever becomes a problem again.
 ## Bumping the pin
 
 1. Pick the commit. It needs the four frontend submodules to be resolvable,
-   which is checked in step 5.
+   which `nix flake lock` will fail on if they are not.
 
    ```fish
    git ls-remote https://github.com/BlueRobotics/BlueOS <ref>
    ```
 
-2. Read its date, which becomes the build date shown in the UI.
+2. Update the `rev` in the `blueos` input URL in `flake.nix`, then re-lock.
+   This fetches the commit with its submodules and records the revision, date
+   and content hash:
 
    ```fish
-   curl -s https://api.github.com/repos/BlueRobotics/BlueOS/commits/<rev> \
-     | jq -r '.commit.committer.date'
+   nix flake lock
    ```
 
-3. Hash it, then convert that to the SRI form the package uses.
+   Leave `version` and `channel` in `nix/packages/blueos-source/default.nix`
+   alone unless the upstream release line moved.
 
-   ```fish
-   set h (nix-prefetch-url --unpack \
-     https://github.com/BlueRobotics/BlueOS/archive/<rev>.tar.gz | tail -1)
-   nix hash convert --hash-algo sha256 --from nix32 --to sri $h
-   ```
-
-4. Update `nix/packages/blueos-source/default.nix`: `rev`, `hash`, and `date`.
-   Leave `version` and `channel` alone unless the upstream release line moved.
-
-5. Check the frontend submodules. They are fetched individually because the
-   GitHub archive carries no submodule content, and their revisions are
-   recorded in `.gitmodules` at the pinned commit.
-
-   ```fish
-   nix eval --raw .#blueos-source.src.outPath | xargs -I{} \
-     git -C {} config --get-regexp '^submodule\..*\.url'
-   ```
-
-   If a revision differs from the one in `nix/packages/blueos-frontend`, update
-   that file too, and recompute its hashes.
-
-6. Rebuild. `blueos-frontend` needs a new `nodeModules.outputHash` whenever
+3. Rebuild. `blueos-frontend` needs a new `nodeModules.outputHash` whenever
    `bun.lockb` changed: set it to `lib.fakeHash`, build once, and copy the
    reported hash back.
 
@@ -94,7 +86,21 @@ if a slow x86_64 build ever becomes a problem again.
    nix build .#blueos-frontend .#blueos-core
    ```
 
-7. Triage the patches (see below), then let CI build the images.
+4. Triage the patches (see below), then let CI build the images.
+
+## Building against a local checkout
+
+`--override-input` points the build at any tree, with no edit to `flake.nix` and
+no hash to compute. The revision and build date come from the input, so a
+working tree reports `unknown` as its revision.
+
+```fish
+nix build --override-input blueos 'path:/path/to/BlueOS' .#blueos-core
+```
+
+Use `path:` rather than a `git+file:` URL: it carries untracked files and
+submodule content, which a git-typed input excludes. It also respects
+`.gitignore`, so build output does not end up in the store.
 
 ## QEMU guests
 
