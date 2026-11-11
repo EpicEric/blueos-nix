@@ -98,14 +98,21 @@
         };
 
       mkQemuGuest =
-        { module }:
+        { name, module }:
+        let
+          blueosNixRev = self.rev or self.dirtyRev or null;
+          revision = if blueosNixRev == null then "unknown" else builtins.substring 0 7 blueosNixRev;
+        in
         lib.nixosSystem {
           system = "x86_64-linux";
           specialArgs = {
             blueos = self.packages.x86_64-linux.blueos-core;
-            blueosNixRev = self.rev or self.dirtyRev or null;
+            inherit blueosNixRev;
           };
-          modules = [ module ];
+          modules = [
+            module
+            { image.baseName = lib.mkDefault "blueos-${name}-${revision}"; }
+          ];
         };
     in
     {
@@ -182,8 +189,14 @@
         blueos-pi4 = mkBlueOS { board = "4"; };
         blueos-pi5 = mkBlueOS { board = "5"; };
 
-        blueos-guest = mkQemuGuest { module = ./nix/nixos/qemu/sil.nix; };
-        blueos-native = mkQemuGuest { module = ./nix/nixos/qemu/native.nix; };
+        blueos-guest = mkQemuGuest {
+          name = "guest";
+          module = ./nix/nixos/qemu/sil.nix;
+        };
+        blueos-native = mkQemuGuest {
+          name = "native";
+          module = ./nix/nixos/qemu/native.nix;
+        };
       };
 
       devShells = forAllSystems (
