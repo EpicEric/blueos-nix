@@ -4,6 +4,7 @@
   lib,
   pkg-config,
   rustPlatform,
+  zstd,
 }:
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "mcap-foxglove-video-extract";
@@ -29,6 +30,7 @@ rustPlatform.buildRustPackage (finalAttrs: {
   buildInputs = [
     gst_all_1.gstreamer
     gst_all_1.gst-plugins-base
+    zstd
   ];
 
   meta = {
