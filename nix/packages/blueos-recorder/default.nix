@@ -1,7 +1,9 @@
 {
   fetchFromGitHub,
   lib,
+  pkg-config,
   rustPlatform,
+  zstd,
 }:
 let
   # ROS message definitions, a submodule the release archive lacks. Only msgs/
@@ -31,6 +33,10 @@ rustPlatform.buildRustPackage (finalAttrs: {
     mkdir -p src/external/zBlueberry
     cp -r ${zBlueberry}/msgs src/external/zBlueberry/msgs
   '';
+
+  nativeBuildInputs = [ pkg-config ];
+
+  buildInputs = [ zstd ];
 
   meta = {
     description = "Records Zenoh traffic to MCAP files on BlueOS";
