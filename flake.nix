@@ -185,5 +185,30 @@
         blueos-guest = mkQemuGuest { module = ./nix/nixos/qemu/sil.nix; };
         blueos-native = mkQemuGuest { module = ./nix/nixos/qemu/native.nix; };
       };
+
+      devShells = forAllSystems (
+        system:
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+        in
+        {
+          default = pkgs.mkShell {
+            packages = [
+              pkgs.bun
+              pkgs.cargo
+              pkgs.clippy
+              pkgs.lsof
+              pkgs.nodejs_24
+              pkgs.parallel
+              pkgs.python311
+              pkgs.pkg-config
+              pkgs.rustc
+              pkgs.rustfmt
+              pkgs.shellcheck
+              pkgs.uv
+            ];
+          };
+        }
+      );
     };
 }
