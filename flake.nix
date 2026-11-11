@@ -10,6 +10,10 @@
 
   inputs = {
     nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.zst";
+    blueos = {
+      url = "git+https://github.com/BlueRobotics/BlueOS?rev=d7b2aff91f827da1f5f0ce995b3bb457a42558ee&submodules=1";
+      flake = false;
+    };
     nixos-hardware = {
       url = "github:NixOS/nixos-hardware";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -35,6 +39,7 @@
     {
       self,
       nixpkgs,
+      blueos,
       nixos-hardware,
       pyproject-nix,
       uv2nix,
@@ -120,7 +125,7 @@
         system:
         let
           pkgs = nixpkgs.legacyPackages.${system};
-          blueos-source = pkgs.callPackage ./nix/packages/blueos-source { };
+          blueos-source = pkgs.callPackage ./nix/packages/blueos-source { inherit blueos; };
         in
         compiledPackages pkgs
         // {

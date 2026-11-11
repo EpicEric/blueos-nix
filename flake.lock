@@ -1,5 +1,24 @@
 {
   "nodes": {
+    "blueos": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1794438378,
+        "narHash": "sha256-mtzA9gRvmyJhlm1ewUwI1erQbnNTUad9xvyEkNZNhxI=",
+        "ref": "refs/heads/master",
+        "rev": "d7b2aff91f827da1f5f0ce995b3bb457a42558ee",
+        "revCount": 5451,
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/BlueRobotics/BlueOS"
+      },
+      "original": {
+        "rev": "d7b2aff91f827da1f5f0ce995b3bb457a42558ee",
+        "submodules": true,
+        "type": "git",
+        "url": "https://github.com/BlueRobotics/BlueOS"
+      }
+    },
     "nixos-hardware": {
       "inputs": {
         "nixpkgs": [
@@ -81,6 +100,7 @@
     },
     "root": {
       "inputs": {
+        "blueos": "blueos",
         "nixos-hardware": "nixos-hardware",
         "nixpkgs": "nixpkgs",
         "pyproject-build-systems": "pyproject-build-systems",
