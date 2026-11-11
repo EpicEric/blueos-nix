@@ -7,7 +7,9 @@
 {
   fetchzip,
   lib,
+  pkg-config,
   rustPlatform,
+  zstd,
 }:
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "zenoh-backend-filesystem";
@@ -21,7 +23,12 @@ rustPlatform.buildRustPackage (finalAttrs: {
 
   cargoHash = "sha256-kbMOAL/CvmbOjKVpnZrZlRsl0sibTBwvqCq5GzXjGx8=";
 
-  nativeBuildInputs = [ rustPlatform.bindgenHook ];
+  nativeBuildInputs = [
+    pkg-config
+    rustPlatform.bindgenHook
+  ];
+
+  buildInputs = [ zstd ];
 
   # The vendored rocksdb 9.9.3 predates GCC 16, which no longer pulls cstdint
   # in transitively, so its headers fail on uint64_t.
