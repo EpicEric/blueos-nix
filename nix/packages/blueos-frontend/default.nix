@@ -2,48 +2,17 @@
   lib,
   bun,
   blueos-source,
-  fetchFromGitHub,
   nodejs,
   stdenvNoCC,
   writableTmpDirAsHomeHook,
 }:
 let
-  inherit (blueos-source) version src rev date;
-
-  # Submodule revisions match the ones the tag records in .gitmodules.
-  submodules = {
-    "core/frontend/public/assets/ArduPilot-Parameter-Repository" = fetchFromGitHub {
-      owner = "ArduPilot";
-      repo = "ParameterRepository";
-      rev = "56888d375a118e4ca1df580886ee3c5ec2cbc9fd";
-      hash = "sha256-Qkf6h9J5NKPnssSu8sMxtACKaCE4psy1i+glgNSbnqw=";
-    };
-    "core/frontend/src/PX4-parameters" = fetchFromGitHub {
-      owner = "patrickelectric";
-      repo = "PX4-parameters";
-      rev = "88ff1308c068168998cdf53702ebfbf271860a4f";
-      hash = "sha256-SRTzNhHxafZTkcaNlQIaNT0Qqov0BFPMgAtMyX2tJBM=";
-    };
-    "core/frontend/src/components/vue-tour" = fetchFromGitHub {
-      owner = "pulsardev";
-      repo = "vue-tour";
-      rev = "a6bf7324224f2d817a2ade108e200d03ee391075";
-      hash = "sha256-K1sIp6N6JVcBLUmREFrJF3nX8Jx/NR4IOys8a4mcMBk=";
-    };
-    "core/frontend/src/libs/MAVLink2Rest/mavlink2rest-ts" = fetchFromGitHub {
-      owner = "patrickelectric";
-      repo = "mavlink2rest-ts";
-      rev = "0d43361847a3cdd36609e504182c603464086b8e";
-      hash = "sha256-hOgtmTvxY7BcELYXnPyTjD1BvWRc3LR8By4r+iVXNYo=";
-    };
-  };
-
-  submoduleCopy = lib.concatStringsSep "\n" (
-    lib.mapAttrsToList (path: submodule: ''
-      rm -rf ${path}
-      cp -R ${submodule} ${path}
-    '') submodules
-  );
+  inherit (blueos-source)
+    version
+    src
+    rev
+    date
+    ;
 
   nodeModules = stdenvNoCC.mkDerivation {
     pname = "blueos-frontend-node-modules";
@@ -103,10 +72,6 @@ stdenvNoCC.mkDerivation {
     ./upstream-pr-4698.patch
     ./systemid-nixos-restart.patch
   ];
-
-  postPatch = ''
-    ${submoduleCopy}
-  '';
 
   configurePhase = ''
     runHook preConfigure
