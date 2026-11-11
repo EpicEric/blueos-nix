@@ -12,6 +12,7 @@
   stdenv,
   stdenvNoCC,
   writableTmpDirAsHomeHook,
+  zstd,
 }:
 let
   version = "3.26.3";
@@ -138,5 +139,6 @@ rustPlatform.buildRustPackage {
     gst_all_1.gst-rtsp-server
     libv4l
     stdenv.cc.cc.lib
+    zstd
   ];
 }
