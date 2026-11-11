@@ -7,6 +7,7 @@
   pkg-config,
   aws-lc,
   systemd,
+  zstd,
 }:
 rustPlatform.buildRustPackage {
   pname = "blueos-updates";
@@ -21,7 +22,10 @@ rustPlatform.buildRustPackage {
     pkg-config
   ];
 
-  buildInputs = [ aws-lc ];
+  buildInputs = [
+    aws-lc
+    zstd
+  ];
 
   # The daemon shells out to these, so they come from the wrapper rather than
   # the host. systemd-run is what moves the switch out of this daemon's cgroup.
