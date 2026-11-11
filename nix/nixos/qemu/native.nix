@@ -19,6 +19,8 @@ in
     ../../modules/blueos
   ];
 
+  image.efiSupport = false;
+
   services.blueos = {
     enable = true;
     package = lib.mkDefault blueos;

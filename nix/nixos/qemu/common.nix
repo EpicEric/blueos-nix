@@ -5,7 +5,10 @@
   ...
 }:
 {
-  imports = [ (modulesPath + "/profiles/qemu-guest.nix") ];
+  imports = [
+    (modulesPath + "/profiles/qemu-guest.nix")
+    (modulesPath + "/virtualisation/disk-image.nix")
+  ];
 
   # Enable Wi-Fi simulation
   boot.kernelModules = [ "mac80211_hwsim" ];
