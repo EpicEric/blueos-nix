@@ -1,4 +1,4 @@
-name: Build RPi images with Nix
+name: Build images with Nix
 
 on:
   push:
@@ -74,7 +74,11 @@ jobs:
 
       - name: Pin system release in cache
         if: startsWith(github.ref, 'refs/tags/')
+        env:
+          NIKS3_AUTH_TOKEN_FILE: "/tmp/niks3-token"
+          NIKS3_SERVER_URL: ${{ vars.NIKS3_SERVER_URL }}
         run: |
+          echo ${{ secrets.NIKS3_AUTH_TOKEN }} > $NIKS3_AUTH_TOKEN_FILE
           niks3 pins create "blueos-${{ github.ref_name }}" "$(cat "$RUNNER_TEMP/toplevel")"
 
       - name: Collect the release metadata
