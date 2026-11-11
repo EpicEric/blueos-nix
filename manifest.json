@@ -1,3 +1,20 @@
 {
-  "releases": []
+  "releases": [
+    {
+      "board": "pi5",
+      "channel": "dev",
+      "published": "2026-11-11T13:36:27Z",
+      "revision": "baf03706fb6f1277aa3e9f563ee7bf2a76f62cd7",
+      "toplevel": "/nix/store/yj2x1l7hp334dlpw1639fh3ypzs0vapl-nixos-system-unnamed-blueos-1.5.0-dev-0-gbaf0370-26.11.20261101.0bb2eed",
+      "version": "1.5.0-dev"
+    },
+    {
+      "board": "pi4",
+      "channel": "dev",
+      "published": "2026-11-11T13:36:27Z",
+      "revision": "baf03706fb6f1277aa3e9f563ee7bf2a76f62cd7",
+      "toplevel": "/nix/store/91ffqv8d0438sww17z5pgwz2j146rd73-nixos-system-unnamed-blueos-1.5.0-dev-0-gbaf0370-26.11.20261101.0bb2eed",
+      "version": "1.5.0-dev"
+    }
+  ]
 }
