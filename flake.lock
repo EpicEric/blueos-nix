@@ -3,17 +3,17 @@
     "blueos": {
       "flake": false,
       "locked": {
-        "lastModified": 1794438378,
-        "narHash": "sha256-mtzA9gRvmyJhlm1ewUwI1erQbnNTUad9xvyEkNZNhxI=",
+        "lastModified": 1794487437,
+        "narHash": "sha256-61G6nwNdCIuUrHxvan1d0u7cT3VeMiKVR+sCo/D8Tcg=",
         "ref": "refs/heads/master",
-        "rev": "d7b2aff91f827da1f5f0ce995b3bb457a42558ee",
-        "revCount": 5451,
+        "rev": "22c34529dee63465bdb86e0983f5642df57ac690",
+        "revCount": 5452,
         "submodules": true,
         "type": "git",
         "url": "https://github.com/BlueRobotics/BlueOS"
       },
       "original": {
-        "rev": "d7b2aff91f827da1f5f0ce995b3bb457a42558ee",
+        "rev": "22c34529dee63465bdb86e0983f5642df57ac690",
         "submodules": true,
         "type": "git",
         "url": "https://github.com/BlueRobotics/BlueOS"

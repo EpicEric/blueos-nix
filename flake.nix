@@ -11,7 +11,7 @@
   inputs = {
     nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.zst";
     blueos = {
-      url = "git+https://github.com/BlueRobotics/BlueOS?rev=d7b2aff91f827da1f5f0ce995b3bb457a42558ee&submodules=1";
+      url = "git+https://github.com/BlueRobotics/BlueOS?rev=22c34529dee63465bdb86e0983f5642df57ac690&submodules=1";
       flake = false;
     };
     nixos-hardware = {
