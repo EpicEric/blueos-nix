@@ -110,6 +110,39 @@ pub(crate) struct DownloadResponse {
     message: String,
 }
 
+#[derive(Deserialize, ToSchema)]
+pub(crate) struct ToplevelRequest {
+    /// Store path of a built system closure, as CI prints it.
+    toplevel: String,
+}
+
+/// The alphabet Nix uses for store path hashes. No `e`, `o`, `u` or `t`.
+const NIX_BASE32: &str = "0123456789abcdfghijklmnpqrsvwxyz";
+
+/// Whether `path` has the shape `/nix/store/<32 base32 chars>-<name>`.
+///
+/// Checked before anything reaches `nix-env`, so a typo or a pasted URL cannot
+/// move the system profile.
+fn is_store_path(path: &str) -> bool {
+    let Some(rest) = path.strip_prefix("/nix/store/") else {
+        return false;
+    };
+    let Some((hash, name)) = rest.split_once('-') else {
+        return false;
+    };
+    hash.len() == 32
+        && hash.chars().all(|character| NIX_BASE32.contains(character))
+        && !name.is_empty()
+        && !name.contains('/')
+}
+
+/// Whether a realised store path is a NixOS system rather than an arbitrary
+/// closure. Only a system may be the profile target, and checking it here
+/// reports the mistake to the caller instead of failing in a detached switch.
+fn is_system_closure(path: &Path) -> bool {
+    path.join("init").exists() && path.join("bin/switch-to-configuration").exists()
+}
+
 /// What the rollback machinery knows, decoded from its state file.
 #[derive(Deserialize, Default)]
 struct RollbackState {
@@ -421,6 +454,62 @@ async fn download_release(
     }))
 }
 
+#[utoipa::path(
+    summary = "Install and activate a system closure by store path",
+    description = "For installing a build that the manifest does not list, such as one made \
+                   from a branch. The closure has to be available from a configured \
+                   substituter; nothing is built. It becomes an ordinary generation, so it \
+                   can be rolled back like any other.",
+    request_body = ToplevelRequest,
+    responses(
+        (status = 202, description = "Activation queued", body = ActivationResponse),
+        (status = 400, description = "Not a store path", body = error::ErrorBody),
+        (status = 502, description = "The closure is not available from the cache", body = error::ErrorBody),
+    ),
+    tag = "generations",
+)]
+#[post("/toplevels/activate")]
+async fn activate_toplevel(
+    request: web::Json<ToplevelRequest>,
+    params: web::Query<ActivateParams>,
+) -> Result<HttpResponse, ApiError> {
+    let toplevel = request.toplevel.trim();
+
+    if !is_store_path(toplevel) {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            format!("'{toplevel}' is not a /nix/store/<hash>-<name> path"),
+        ));
+    }
+
+    // Realising first means a closure the cache does not have fails before the
+    // profile moves, which is the same order a published release uses.
+    apply::realise(toplevel)
+        .await
+        .map_err(|error| ApiError::bad_gateway(format!("{error:#}")))?;
+
+    let path = Path::new(toplevel);
+    if !is_system_closure(path) {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            format!("{toplevel} is not a NixOS system closure"),
+        ));
+    }
+
+    let outcome = apply::activate(path, apply::Selection::Store, params.mode.as_str()).await?;
+
+    Ok(HttpResponse::Accepted().json(ActivationResponse {
+        toplevel: outcome.toplevel,
+        reboot_required: outcome.reboot_required,
+        message: if outcome.reboot_required {
+            format!("{toplevel} is installed; reboot to boot into it.")
+        } else {
+            format!("Switching to {toplevel}.")
+        },
+        log: outcome.log,
+    }))
+}
+
 pub(crate) struct AppState {
     board: String,
     manifest_url: Option<String>,
@@ -451,7 +540,7 @@ impl AppState {
         (name = "generations", description = "Versions installed on the card"),
         (name = "releases", description = "Versions published for this board"),
     ),
-    components(schemas(ActivateMode))
+    components(schemas(ActivateMode, ToplevelRequest))
 )]
 struct ApiDoc;
 
@@ -477,6 +566,7 @@ async fn main() -> std::io::Result<()> {
                     .service(restart)
                     .service(list_generations)
                     .service(activate_generation)
+                    .service(activate_toplevel)
                     .service(delete_generation)
                     .service(list_releases)
                     .service(activate_release)

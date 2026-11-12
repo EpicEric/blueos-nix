@@ -155,8 +155,8 @@ fn unique_suffix() -> String {
     )
 }
 
-/// Substitute a published closure from the binary cache: no Nix evaluation,
-/// just the store path the publisher recorded.
+/// Substitute a closure from the binary cache: no Nix evaluation, just the store
+/// path the caller already has.
 pub(crate) async fn realise(toplevel: &str) -> anyhow::Result<()> {
     let (status, stderr) = run(
         Command::new("nix-store").args(["--realise", toplevel]),
@@ -166,7 +166,7 @@ pub(crate) async fn realise(toplevel: &str) -> anyhow::Result<()> {
 
     if !status.success() {
         bail!(
-            "the published build is not available from the binary cache: {}",
+            "{toplevel} is not available from the binary cache: {}",
             detail(&stderr)
         );
     }
