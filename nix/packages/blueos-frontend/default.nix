@@ -68,10 +68,7 @@ stdenvNoCC.mkDerivation {
     writableTmpDirAsHomeHook
   ];
 
-  patches = [
-    ./upstream-pr-4698.patch
-    ./systemid-nixos-restart.patch
-  ];
+  patches = [ ./upstream-pr-4698.patch ];
 
   configurePhase = ''
     runHook preConfigure

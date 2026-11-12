@@ -3,14 +3,16 @@
 # generation chooser, as *Nixos.vue siblings selected at build time by
 # VITE_BLUEOS_UPDATES.
 #
-# Base: db6f25af759f601bc2683717ceca1a07d73e22bf, the PR head. 13 commits on
-# top of the pinned rev, squashed into one diff so it applies to the pin. It
-# includes the ttag imports and unique component tags the PR was missing.
+# Base: d7b2aff91f827da1f5f0ce995b3bb457a42558ee, the pinned rev. Head:
+# 856900244bafbf6b7fe85e5c2a45462ebc01e064, 14 commits on top of it, squashed
+# into one diff so it applies to the pin. It includes the ttag imports and
+# unique component tags the PR was missing, and the restart fix SystemId.vue
+# needed, which this repo used to carry as a separate patch.
 #
 # Delete once merged. Regenerate with:
 #   git -C <BlueOS> diff <pinned-rev> <PR-head>
 diff --git a/core/frontend/src/App.vue b/core/frontend/src/App.vue
-index bfc3000113..12cb858204 100644
+index 8086139ad..4ea5c6be5 100644
 --- a/core/frontend/src/App.vue
 +++ b/core/frontend/src/App.vue
 @@ -376,7 +376,7 @@
@@ -47,7 +49,7 @@ index bfc3000113..12cb858204 100644
      SystemCheckerTrayMenu,
      VehicleRebootRequiredTrayMenu,
      OnBoardComputerRequiredTrayMenu,
-@@ -827,7 +829,7 @@ export default Vue.extend({
+@@ -830,7 +832,7 @@ export default Vue.extend({
          // Invalid URL, ignore
        }
      })
@@ -58,7 +60,7 @@ index bfc3000113..12cb858204 100644
    beforeDestroy() {
 diff --git a/core/frontend/src/components/app/NewVersionNotificatorNixos.vue b/core/frontend/src/components/app/NewVersionNotificatorNixos.vue
 new file mode 100644
-index 0000000000..70d8e41e32
+index 000000000..70d8e41e3
 --- /dev/null
 +++ b/core/frontend/src/components/app/NewVersionNotificatorNixos.vue
 @@ -0,0 +1,105 @@
@@ -168,9 +170,18 @@ index 0000000000..70d8e41e32
 +})
 +</script>
 diff --git a/core/frontend/src/components/app/PowerMenu.vue b/core/frontend/src/components/app/PowerMenu.vue
-index 209d94a8b3..17b74390b9 100644
+index 209d94a8b..da46bd79c 100644
 --- a/core/frontend/src/components/app/PowerMenu.vue
 +++ b/core/frontend/src/components/app/PowerMenu.vue
+@@ -53,7 +53,7 @@
+               >
+                 mdi-folder-refresh
+               </v-icon>
+-              {{ settings.is_pirate_mode ? t`Restart Core container` : t`Soft restart` }}
++              {{ settings.is_pirate_mode ? t`Restart Core` : t`Soft restart` }}
+             </v-btn>
+             <v-btn
+               v-tooltip="t`Fully restarts the onboard computer`"
 @@ -108,9 +108,15 @@ import autopilot from '@/store/autopilot_manager'
  import commander from '@/store/commander'
  import { ShutdownType } from '@/types/commander'
@@ -201,7 +212,7 @@ index 209d94a8b3..17b74390b9 100644
        this.service_status = Status.PoweringOff
 diff --git a/core/frontend/src/components/health/SelfHealthTestNixos.vue b/core/frontend/src/components/health/SelfHealthTestNixos.vue
 new file mode 100644
-index 0000000000..3aef82970d
+index 000000000..3aef82970
 --- /dev/null
 +++ b/core/frontend/src/components/health/SelfHealthTestNixos.vue
 @@ -0,0 +1,59 @@
@@ -264,9 +275,43 @@ index 0000000000..3aef82970d
 +  },
 +})
 +</script>
+diff --git a/core/frontend/src/components/vehiclesetup/overview/SystemId.vue b/core/frontend/src/components/vehiclesetup/overview/SystemId.vue
+index f7e3a9d8f..b5591ccac 100644
+--- a/core/frontend/src/components/vehiclesetup/overview/SystemId.vue
++++ b/core/frontend/src/components/vehiclesetup/overview/SystemId.vue
+@@ -63,11 +63,17 @@ import autopilot from '@/store/autopilot'
+ import Parameter from '@/types/autopilot/parameter'
+ import { autopilot_service } from '@/types/frontend_services'
+ import back_axios from '@/utils/api'
++import use_nixos_updates from '@/utils/updates_backend'
++import * as VersionChooserDocker from '@/utils/version_chooser'
++import * as VersionChooserNixos from '@/utils/version_chooser_nixos'
+ 
+ import SpinningLogo from '../../common/SpinningLogo.vue'
+ 
+ const notifier = new Notifier(autopilot_service)
+ 
++/** Restarting the core means a different endpoint depending on the backend. */
++const version_chooser_api = use_nixos_updates ? VersionChooserNixos : VersionChooserDocker
++
+ export default Vue.extend({
+   name: 'SystemId',
+   components: {
+@@ -116,10 +122,7 @@ export default Vue.extend({
+     },
+     async restartCore(): Promise<void> {
+       this.restarting = true
+-      await back_axios({
+-        method: 'post',
+-        url: '/version-chooser/v1.0/version/restart',
+-      }).finally(() => setTimeout(this.waitForBackendToBeOnline, 15000))
++      await version_chooser_api.restartCore().finally(() => setTimeout(this.waitForBackendToBeOnline, 15000))
+     },
+     async waitForBackendToBeOnline(): Promise<void> {
+       back_axios({
 diff --git a/core/frontend/src/components/version-chooser/GenerationCard.vue b/core/frontend/src/components/version-chooser/GenerationCard.vue
 new file mode 100644
-index 0000000000..bb62b0ba89
+index 000000000..bb62b0ba8
 --- /dev/null
 +++ b/core/frontend/src/components/version-chooser/GenerationCard.vue
 @@ -0,0 +1,202 @@
@@ -474,7 +519,7 @@ index 0000000000..bb62b0ba89
 +</script>
 diff --git a/core/frontend/src/components/version-chooser/ReleaseCard.vue b/core/frontend/src/components/version-chooser/ReleaseCard.vue
 new file mode 100644
-index 0000000000..8b78acafe2
+index 000000000..8b78acafe
 --- /dev/null
 +++ b/core/frontend/src/components/version-chooser/ReleaseCard.vue
 @@ -0,0 +1,197 @@
@@ -677,7 +722,7 @@ index 0000000000..8b78acafe2
 +</script>
 diff --git a/core/frontend/src/components/version-chooser/ReleaseNotesNixos.vue b/core/frontend/src/components/version-chooser/ReleaseNotesNixos.vue
 new file mode 100644
-index 0000000000..18f6cb44df
+index 000000000..18f6cb44d
 --- /dev/null
 +++ b/core/frontend/src/components/version-chooser/ReleaseNotesNixos.vue
 @@ -0,0 +1,65 @@
@@ -748,10 +793,10 @@ index 0000000000..18f6cb44df
 +</style>
 diff --git a/core/frontend/src/components/version-chooser/VersionChooserNixos.vue b/core/frontend/src/components/version-chooser/VersionChooserNixos.vue
 new file mode 100644
-index 0000000000..a48d286c3b
+index 000000000..ff275a21d
 --- /dev/null
 +++ b/core/frontend/src/components/version-chooser/VersionChooserNixos.vue
-@@ -0,0 +1,555 @@
+@@ -0,0 +1,633 @@
 +<template>
 +  <v-container>
 +    <v-col
@@ -970,6 +1015,43 @@ index 0000000000..a48d286c3b
 +          {{ t`This vehicle was built without a release manifest, so there is nothing to download. Versions can still be deployed with nixos-rebuild or deploy-rs, which are protected by the same rollback.` }}
 +        </p>
 +      </v-card>
++
++      <v-card
++        v-if="settings.is_dev_mode"
++        max-width="900"
++        class="mx-auto my-12 pa-4"
++      >
++        <h2>{{ t`Install a store path` }}</h2>
++        <p class="text-caption text--secondary">
++          <!-- eslint-disable-next-line max-len -->
++          {{ t`For a build the manifest does not list, such as one made from a branch. The build has to be in a binary cache already: nothing is compiled here. It becomes a normal version, so it can be rolled back like any other.` }}
++        </p>
++        <v-form @submit.prevent="installToplevel()">
++          <v-text-field
++            v-model="toplevel"
++            :label="t`System store path`"
++            :placeholder="t`/nix/store/...-nixos-system-blueos-...`"
++            :error-messages="toplevel_error"
++            :disabled="working"
++            append-outer-icon="mdi-download"
++            clearable
++            @click:append-outer="installToplevel()"
++          />
++        </v-form>
++        <v-alert
++          v-if="toplevel_log"
++          class="mt-4"
++          border="top"
++          colored-border
++          type="error"
++          elevation="2"
++        >
++          <p class="ma-0">
++            {{ t`The last attempt did not switch:` }}
++          </p>
++          <pre class="text-caption mt-2">{{ toplevel_log }}</pre>
++        </v-alert>
++      </v-card>
 +    </v-col>
 +    <v-overlay
 +      :z-index="10"
@@ -1040,6 +1122,9 @@ index 0000000000..a48d286c3b
 +      deleting: null as (null | number),
 +      upgrading: false,
 +      showRollbackDetails: false,
++      toplevel: '',
++      toplevel_error: '',
++      toplevel_log: null as (null | string),
 +    }
 +  },
 +  computed: {
@@ -1234,6 +1319,44 @@ index 0000000000..a48d286c3b
 +      }
 +    },
 +
++    /**
++     * Installing by store path is for builds the manifest does not list, so the
++     * chooser has no published metadata to show for the result; the daemon's
++     * message is what names the build on failure.
++     */
++    async installToplevel(): Promise<void> {
++      const toplevel = this.toplevel.trim()
++      this.toplevel_error = ''
++      this.toplevel_log = null
++
++      if (!VCU.isStorePath(toplevel)) {
++        this.toplevel_error = t`That is not a /nix/store path to a system build.`
++        return
++      }
++
++      this.waiting = true
++      this.waiting_text = t`Downloading the build...`
++      try {
++        await VCU.activateToplevel(toplevel, 'boot')
++        this.toplevel = ''
++        notifier.pushSuccess(
++          'VERSION_CHOOSER_TOPLEVEL_SUCCESS',
++          t`The build is installed. Reboot to boot into it.`,
++          true,
++        )
++        await this.refresh()
++      } catch (error) {
++        this.toplevel_log = VCU.describeError(error)
++        notifier.pushError(
++          'VERSION_CHOOSER_TOPLEVEL_FAIL',
++          `${t`Could not install that build:`} ${VCU.describeError(error)}`,
++          true,
++        )
++      } finally {
++        this.waiting = false
++      }
++    },
++
 +    async download(release: Release): Promise<void> {
 +      this.downloading_release = release.version
 +      try {
@@ -1308,7 +1431,7 @@ index 0000000000..a48d286c3b
 +})
 +</script>
 diff --git a/core/frontend/src/i18n/en.po b/core/frontend/src/i18n/en.po
-index a3f393160e..7dc68cd758 100644
+index a3f393160..2dae45edd 100644
 --- a/core/frontend/src/i18n/en.po
 +++ b/core/frontend/src/i18n/en.po
 @@ -44,6 +44,13 @@ msgstr ""
@@ -1367,7 +1490,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/system-information/Firmware.vue
  msgid "Bootloader Version"
  msgstr ""
-@@ -944,6 +965,30 @@ msgstr ""
+@@ -944,6 +965,34 @@ msgstr ""
  msgid "Core container is restarting, please wait."
  msgstr ""
  
@@ -1381,6 +1504,10 @@ index a3f393160e..7dc68cd758 100644
 +
 +#: src/components/version-chooser/VersionChooserNixos.vue
 +msgid "Could not install"
++msgstr ""
++
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "Could not install that build:"
 +msgstr ""
 +
 +#: src/components/version-chooser/VersionChooserNixos.vue
@@ -1398,7 +1525,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/bridges/BridgeCreationDialog.vue
  #: src/components/ethernet/AddressCreationDialog.vue
  #: src/components/kraken/modals/ExtensionCreationModal.vue
-@@ -987,6 +1032,7 @@ msgid "Current Pin:"
+@@ -987,6 +1036,7 @@ msgid "Current Pin:"
  msgstr ""
  
  #: src/components/version-chooser/VersionChooser.vue
@@ -1406,7 +1533,7 @@ index a3f393160e..7dc68cd758 100644
  msgid "Current Version"
  msgstr ""
  
-@@ -1054,7 +1100,9 @@ msgstr ""
+@@ -1054,7 +1104,9 @@ msgstr ""
  msgid "Decompressing file, this usually takes up to one minute, please stand by..."
  msgstr ""
  
@@ -1416,7 +1543,7 @@ index a3f393160e..7dc68cd758 100644
  msgid "Delete"
  msgstr ""
  
-@@ -1066,6 +1114,10 @@ msgstr ""
+@@ -1066,6 +1118,10 @@ msgstr ""
  msgid "Delete selected logs"
  msgstr ""
  
@@ -1427,7 +1554,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/views/SettingsView.vue
  msgid "Deleting:"
  msgstr ""
-@@ -1201,6 +1253,8 @@ msgstr ""
+@@ -1201,6 +1257,8 @@ msgstr ""
  msgid "Docker Login"
  msgstr ""
  
@@ -1436,7 +1563,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/version-chooser/VersionCard.vue
  msgid "Documentation for this version"
  msgstr ""
-@@ -1225,6 +1279,10 @@ msgstr ""
+@@ -1225,6 +1283,10 @@ msgstr ""
  msgid "Download and Apply"
  msgstr ""
  
@@ -1447,7 +1574,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/logs/LogManager.vue
  msgid "Download log"
  msgstr ""
-@@ -1233,6 +1291,10 @@ msgstr ""
+@@ -1233,6 +1295,10 @@ msgstr ""
  msgid "Download logs for all BlueOS services"
  msgstr ""
  
@@ -1458,7 +1585,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/logs/LogManager.vue
  msgid "Download selected logs"
  msgstr ""
-@@ -1245,6 +1307,14 @@ msgstr ""
+@@ -1245,6 +1311,18 @@ msgstr ""
  msgid "Download speed from vehicle"
  msgstr ""
  
@@ -1470,10 +1597,14 @@ index a3f393160e..7dc68cd758 100644
 +msgid "Downloading"
 +msgstr ""
 +
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "Downloading the build..."
++msgstr ""
++
  #: src/components/utils/PullProgress.vue
  #, javascript-format
  msgid "Downloading: ${ 0 }%"
-@@ -1379,6 +1449,13 @@ msgstr ""
+@@ -1379,6 +1457,13 @@ msgstr ""
  msgid "Event log"
  msgstr ""
  
@@ -1487,7 +1618,21 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/system-information/Processes.vue
  msgid "Executable path"
  msgstr ""
-@@ -1595,6 +1672,10 @@ msgstr ""
+@@ -1522,6 +1607,13 @@ msgstr ""
+ msgid "Flight Controller"
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid ""
++"For a build the manifest does not list, such as one made from a branch. The "
++"build has to be in a binary cache already: nothing is compiled here. It "
++"becomes a normal version, so it can be rolled back like any other."
++msgstr ""
++
+ #: src/components/wifi/ConnectionDialog.vue
+ msgid "Force new password"
+ msgstr ""
+@@ -1595,6 +1687,10 @@ msgstr ""
  msgid "GPIO Function:"
  msgstr ""
  
@@ -1498,7 +1643,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/vehiclesetup/configuration/compass/AutoCoordinateDetector.vue
  msgid "GeoIP coordinates are estimated based on your IP address."
  msgstr ""
-@@ -1639,6 +1720,8 @@ msgstr ""
+@@ -1639,6 +1735,8 @@ msgstr ""
  msgid "Hide"
  msgstr ""
  
@@ -1507,7 +1652,18 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/version-chooser/VersionCard.vue
  msgid "Hide release notes"
  msgstr ""
-@@ -1793,6 +1876,10 @@ msgstr ""
+@@ -1773,6 +1871,10 @@ msgstr ""
+ msgid "Install Major Tom"
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "Install a store path"
++msgstr ""
++
+ #: src/views/ExtensionManagerView.vue
+ msgid "Install extension"
+ msgstr ""
+@@ -1793,6 +1895,10 @@ msgstr ""
  msgid "Install from file"
  msgstr ""
  
@@ -1518,7 +1674,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/wizard/Wizard.vue
  msgid "Install scripts"
  msgstr ""
-@@ -1809,6 +1896,14 @@ msgstr ""
+@@ -1809,6 +1915,14 @@ msgstr ""
  msgid "Installed"
  msgstr ""
  
@@ -1533,7 +1689,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/autopilot/FirmwareManager.vue
  msgid "Installing firmware. Please wait."
  msgstr ""
-@@ -2177,6 +2272,14 @@ msgstr ""
+@@ -2177,6 +2291,14 @@ msgstr ""
  msgid "Modified"
  msgstr ""
  
@@ -1548,7 +1704,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/vehiclesetup/PwmSetup.vue
  msgid "Motor Test"
  msgstr ""
-@@ -2865,6 +2968,7 @@ msgstr ""
+@@ -2865,6 +2987,7 @@ msgstr ""
  
  #: src/components/app/PowerMenu.vue
  #: src/components/autopilot/FirmwareManager.vue
@@ -1556,7 +1712,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/views/SettingsView.vue
  msgid "Reboot"
  msgstr ""
-@@ -2908,6 +3012,7 @@ msgid "Relay On"
+@@ -2908,6 +3031,7 @@ msgid "Relay On"
  msgstr ""
  
  #: src/components/version-chooser/ReleaseNotes.vue
@@ -1564,7 +1720,23 @@ index a3f393160e..7dc68cd758 100644
  msgid "Release notes are not available for this version."
  msgstr ""
  
-@@ -3035,6 +3140,7 @@ msgid "Retrieve from Cloud"
+@@ -2986,14 +3110,11 @@ msgstr ""
+ msgid "Restart Autopilot"
+ msgstr ""
+ 
++#: src/components/app/PowerMenu.vue
+ #: src/components/vehiclesetup/overview/SystemId.vue
+ msgid "Restart Core"
+ msgstr ""
+ 
+-#: src/components/app/PowerMenu.vue
+-msgid "Restart Core container"
+-msgstr ""
+-
+ #: src/views/Autopilot.vue
+ msgid "Restart autopilot"
+ msgstr ""
+@@ -3035,6 +3156,7 @@ msgid "Retrieve from Cloud"
  msgstr ""
  
  #: src/components/version-chooser/VersionChooser.vue
@@ -1572,7 +1744,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/wizard/Wizard.vue
  msgid "Retry"
  msgstr ""
-@@ -3061,6 +3167,10 @@ msgstr ""
+@@ -3061,6 +3183,10 @@ msgstr ""
  msgid "Roll: ${ 0 }°"
  msgstr ""
  
@@ -1583,7 +1755,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/system-information/Processes.vue
  msgid "Root directory"
  msgstr ""
-@@ -3074,6 +3184,7 @@ msgstr ""
+@@ -3074,6 +3200,7 @@ msgstr ""
  msgid "Run Wizard"
  msgstr ""
  
@@ -1591,7 +1763,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/version-chooser/VersionCard.vue
  msgid "Running"
  msgstr ""
-@@ -3540,11 +3651,19 @@ msgstr ""
+@@ -3540,11 +3667,19 @@ msgstr ""
  msgid "Successfully updated smart-hotspot configuration."
  msgstr ""
  
@@ -1611,7 +1783,18 @@ index a3f393160e..7dc68cd758 100644
  #: src/views/SettingsView.vue
  msgid "System"
  msgstr ""
-@@ -3640,6 +3759,10 @@ msgid ""
+@@ -3609,6 +3744,10 @@ msgid ""
+ "automatically reverses their control signals as relevant."
+ msgstr ""
+ 
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "That is not a /nix/store path to a system build."
++msgstr ""
++
+ #: src/components/video-manager/VideoDiagnosticHelper.vue
+ msgid ""
+ "That should be fine if you are using this wi-fi connection for something "
+@@ -3640,6 +3779,14 @@ msgid ""
  "is currently ${ 1 }. Reboot the autopilot after changing the parameter."
  msgstr ""
  
@@ -1619,10 +1802,14 @@ index a3f393160e..7dc68cd758 100644
 +msgid "The build can be downloaded again if it is published."
 +msgstr ""
 +
++#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "The build is installed. Reboot to boot into it."
++msgstr ""
++
  #: src/components/vehiclesetup/configuration/compass/ArdupilotMavlinkCompassSetup.vue
  msgid "The compass is not calibrated - please calibrate it."
  msgstr ""
-@@ -3651,10 +3774,38 @@ msgid ""
+@@ -3651,10 +3798,42 @@ msgid ""
  "Installing it might result in the extension failing to load."
  msgstr ""
  
@@ -1652,6 +1839,10 @@ index a3f393160e..7dc68cd758 100644
 +msgstr ""
 +
 +#: src/components/version-chooser/VersionChooserNixos.vue
++msgid "The last attempt did not switch:"
++msgstr ""
++
++#: src/components/version-chooser/VersionChooserNixos.vue
 +#, javascript-format
 +msgid ""
 +"The last update did not pass its health check, so the vehicle rolled back "
@@ -1661,7 +1852,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/alerts/rules/network.ts
  msgid ""
  "The network link is working but domain names cannot be resolved. Check the "
-@@ -3685,6 +3836,10 @@ msgid ""
+@@ -3685,6 +3864,10 @@ msgid ""
  "be in calm water and far from walls and objects."
  msgstr ""
  
@@ -1672,7 +1863,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/wizard/Wizard.vue
  msgid ""
  "The wizard will only show if BlueOS is updated and further configuration is "
-@@ -3795,6 +3950,13 @@ msgid ""
+@@ -3795,6 +3978,13 @@ msgid ""
  "doing when this happened."
  msgstr ""
  
@@ -1686,7 +1877,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/kraken/modals/ExtensionDetailsModal.vue
  msgid "This version is not compatible with current machine running BlueOS"
  msgstr ""
-@@ -3896,6 +4058,12 @@ msgstr ""
+@@ -3896,6 +4086,12 @@ msgstr ""
  msgid "Try to fetch DNS namservers from the host"
  msgstr ""
  
@@ -1699,7 +1890,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/version-chooser/VersionChooser.vue
  #, javascript-format
  msgid ""
-@@ -3990,7 +4158,9 @@ msgid "Update time"
+@@ -3990,7 +4186,9 @@ msgid "Update time"
  msgstr ""
  
  #: src/components/app/NewVersionNotificator.vue
@@ -1709,7 +1900,7 @@ index a3f393160e..7dc68cd758 100644
  #, javascript-format
  msgid "Update to ${ 0 }"
  msgstr ""
-@@ -4005,6 +4175,10 @@ msgstr ""
+@@ -4005,6 +4203,10 @@ msgstr ""
  msgid "Update to latest ${ 0 }"
  msgstr ""
  
@@ -1720,7 +1911,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/customization/BrandingUploader.vue
  #: src/components/customization/ThemeCustomization.vue
  #: src/components/version-chooser/VersionChooser.vue
-@@ -4194,6 +4368,13 @@ msgstr ""
+@@ -4194,6 +4396,13 @@ msgstr ""
  msgid "Versions"
  msgstr ""
  
@@ -1734,7 +1925,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/health/GpsTrayMenu.vue
  msgid "Vertical Accuracy"
  msgstr ""
-@@ -4279,6 +4460,14 @@ msgstr ""
+@@ -4279,6 +4488,14 @@ msgstr ""
  msgid "Waiting for parameters.."
  msgstr ""
  
@@ -1749,7 +1940,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/cloud/CloudSyncStatusTab.vue
  #, javascript-format
  msgid "Waiting to upload • ${ 0 }"
-@@ -4306,6 +4495,8 @@ msgid ""
+@@ -4306,6 +4523,8 @@ msgid ""
  "can skip this wizard."
  msgstr ""
  
@@ -1758,7 +1949,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/version-chooser/VersionCard.vue
  msgid "What's new?"
  msgstr ""
-@@ -4419,6 +4610,11 @@ msgstr ""
+@@ -4419,6 +4638,11 @@ msgstr ""
  msgid "Zenoh Network"
  msgstr ""
  
@@ -1770,7 +1961,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/cloud/CloudSettingsTab.vue
  msgid "already have a token"
  msgstr ""
-@@ -4427,6 +4623,14 @@ msgstr ""
+@@ -4427,6 +4651,14 @@ msgstr ""
  msgid "an automatically assigned port"
  msgstr ""
  
@@ -1785,7 +1976,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/ethernet/InterfaceCard.vue
  msgid "dynamic IP"
  msgstr ""
-@@ -4439,6 +4643,10 @@ msgstr ""
+@@ -4439,6 +4671,10 @@ msgstr ""
  msgid "fetching..."
  msgstr ""
  
@@ -1796,7 +1987,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/vehiclesetup/MotorDetection.vue
  msgid "incorrect frame selection"
  msgstr ""
-@@ -4447,10 +4655,22 @@ msgstr ""
+@@ -4447,10 +4683,22 @@ msgstr ""
  msgid "incorrect motor mapping"
  msgstr ""
  
@@ -1819,7 +2010,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/parameter-editor/ServoFunctionGpioEditor.vue
  msgid "nothing"
  msgstr ""
-@@ -4459,6 +4679,10 @@ msgstr ""
+@@ -4459,6 +4707,10 @@ msgstr ""
  msgid "poor movement estimation"
  msgstr ""
  
@@ -1830,7 +2021,7 @@ index a3f393160e..7dc68cd758 100644
  #: src/components/ethernet/InterfaceCard.vue
  msgid "static IP"
  msgstr ""
-@@ -4467,6 +4691,10 @@ msgstr ""
+@@ -4467,6 +4719,10 @@ msgstr ""
  msgid "tab."
  msgstr ""
  
@@ -1843,7 +2034,7 @@ index a3f393160e..7dc68cd758 100644
  msgstr ""
 diff --git a/core/frontend/src/types/version-chooser-nixos.ts b/core/frontend/src/types/version-chooser-nixos.ts
 new file mode 100644
-index 0000000000..8a222fcb6e
+index 000000000..8a222fcb6
 --- /dev/null
 +++ b/core/frontend/src/types/version-chooser-nixos.ts
 @@ -0,0 +1,64 @@
@@ -1913,7 +2104,7 @@ index 0000000000..8a222fcb6e
 +export type ActivationMode = 'switch' | 'boot'
 diff --git a/core/frontend/src/utils/updates_backend.ts b/core/frontend/src/utils/updates_backend.ts
 new file mode 100644
-index 0000000000..301917ce94
+index 000000000..301917ce9
 --- /dev/null
 +++ b/core/frontend/src/utils/updates_backend.ts
 @@ -0,0 +1,10 @@
@@ -1928,7 +2119,7 @@ index 0000000000..301917ce94
 +
 +export default use_nixos_updates
 diff --git a/core/frontend/src/utils/version_chooser.ts b/core/frontend/src/utils/version_chooser.ts
-index ed1d6628be..43fb63ed37 100644
+index ed1d6628b..43fb63ed3 100644
 --- a/core/frontend/src/utils/version_chooser.ts
 +++ b/core/frontend/src/utils/version_chooser.ts
 @@ -321,6 +321,13 @@ async function getFactoryVersion(): Promise<string> {
@@ -1955,10 +2146,10 @@ index ed1d6628be..43fb63ed37 100644
    getFactoryVersion,
 diff --git a/core/frontend/src/utils/version_chooser_nixos.ts b/core/frontend/src/utils/version_chooser_nixos.ts
 new file mode 100644
-index 0000000000..0373b444e5
+index 000000000..63197cd39
 --- /dev/null
 +++ b/core/frontend/src/utils/version_chooser_nixos.ts
-@@ -0,0 +1,255 @@
+@@ -0,0 +1,277 @@
 +import { gt as sem_ver_greater, parse as parse_sem_ver, SemVer } from 'semver'
 +
 +import { ReleaseNotes } from '@/types/version-chooser'
@@ -2139,6 +2330,26 @@ index 0000000000..0373b444e5
 +  })
 +}
 +
++/**
++ * Installs a build the manifest does not list, such as one made from a branch.
++ * The daemon only substitutes it, so the closure has to be in a binary cache
++ * already; nothing is built on the vehicle.
++ */
++async function activateToplevel(toplevel: string, mode: ActivationMode): Promise<ActivationResponse> {
++  return back_axios({
++    method: 'post',
++    url: `${API_URL}/toplevels/activate`,
++    data: { toplevel },
++    params: { mode },
++    timeout: 30 * 60 * 1000,
++  }).then((response) => response.data as ActivationResponse)
++}
++
++/** Whether `path` has the shape of a store path, so obvious typos are caught before a request. */
++function isStorePath(path: string): boolean {
++  return /^\/nix\/store\/[0-9abcdfghijklmnpqrsvwxyz]{32}-[^/]+$/.test(path.trim())
++}
++
 +interface GitHubRelease {
 +  body_html: string | null,
 +  html_url: string,
@@ -2199,6 +2410,7 @@ index 0000000000..0373b444e5
 +export {
 +  activateGeneration,
 +  activateRelease,
++  activateToplevel,
 +  deleteGeneration,
 +  describeError,
 +  downloadRelease,
@@ -2207,6 +2419,7 @@ index 0000000000..0373b444e5
 +  getReleaseNotes,
 +  isPreRelease,
 +  isSemVer,
++  isStorePath,
 +  latestRelease,
 +  loadGenerations,
 +  loadReleases,
@@ -2215,7 +2428,7 @@ index 0000000000..0373b444e5
 +  sortReleases,
 +}
 diff --git a/core/frontend/src/views/MainView.vue b/core/frontend/src/views/MainView.vue
-index cc9c348b5e..c7213208fe 100644
+index cc9c348b5..c7213208f 100644
 --- a/core/frontend/src/views/MainView.vue
 +++ b/core/frontend/src/views/MainView.vue
 @@ -17,7 +17,7 @@
@@ -2255,7 +2468,7 @@ index cc9c348b5e..c7213208fe 100644
    },
    data() {
 diff --git a/core/frontend/src/views/VersionChooser.vue b/core/frontend/src/views/VersionChooser.vue
-index 78ed6cc781..77ced1bacb 100644
+index 78ed6cc78..77ced1bac 100644
 --- a/core/frontend/src/views/VersionChooser.vue
 +++ b/core/frontend/src/views/VersionChooser.vue
 @@ -1,7 +1,7 @@
@@ -2290,7 +2503,7 @@ index 78ed6cc781..77ced1bacb 100644
  })
  </script>
 diff --git a/core/frontend/vite.config.js b/core/frontend/vite.config.js
-index 8bc482ee4b..1831d07a41 100644
+index 8bc482ee4..1831d07a4 100644
 --- a/core/frontend/vite.config.js
 +++ b/core/frontend/vite.config.js
 @@ -9,7 +9,10 @@ import wasm from "vite-plugin-wasm"
