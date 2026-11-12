@@ -245,8 +245,8 @@ in
     raspberryPi = {
       enable = mkOption {
         type = types.bool;
-        default = pkgs.stdenv.hostPlatform.isAarch64;
-        defaultText = lib.literalMD "true on aarch64";
+        default = pkgs.stdenv.hostPlatform.system == "aarch64-linux";
+        defaultText = lib.literalMD "true on aarch64-linux";
         description = ''
           Apply the settings BlueOS expects on a Pi: the i2c bus for the
           Navigator and the UART left free for it.
