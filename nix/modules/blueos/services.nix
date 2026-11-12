@@ -12,6 +12,32 @@ let
   logs = "/var/logs/blueos/services";
   userdata = "/usr/blueos/userdata";
 
+  motdFile = pkgs.writeText "blueos-motd" ''
+
+       │       ___ _           ___  ___
+     ╶┘│└╴    | _ ) |_  _ ___ / _ \/ __|
+    ───┼───   | _ \ | || / -_) (_) \__ \
+     ╶┐│┌╴    |___/_|\_,_\___|\___/|___/
+       │
+
+    Welcome to BlueOS ${cfg.version}!
+
+    What you currently see is a tmux session in BlueOS.
+
+    USAGE NOTES:
+    To split the screen horizontally, press ctrl+b then %
+    To split the screen vertically, press ctrl+b then "
+    To switch tabs, click them or press ctrl+b then use the directional keys in the keyboard
+
+    Happy Hacking!
+
+  '';
+
+  ttydEntry = pkgs.writeShellScript "ttyd-entry" ''
+    tmux attach -t user_terminal 2>/dev/null || \
+      tmux new -s user_terminal "cat ${motdFile}; exec ${pkgs.bashInteractive}/bin/bash -l"
+  '';
+
   zenohConfig = pkgs.writeText "blueos-zenoh.json5" (
     builtins.toJSON {
       adminspace.enabled = true;
@@ -399,7 +425,7 @@ in
         memoryMax = 250;
         nice = 19;
         path = [ pkgs.tmux ];
-        exec = ''${pkgs.ttyd}/bin/ttyd -W -p 8088 ${pkgs.runtimeShell} -c "tmux attach -t user_terminal || tmux new -s user_terminal"'';
+        exec = "${pkgs.ttyd}/bin/ttyd -W -p 8088 ${ttydEntry}";
       };
     };
   };
